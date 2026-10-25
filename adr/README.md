@@ -28,3 +28,4 @@ numbers are never reused; this index is updated in the same commit as the ADR.
 | [0011](0011-define-the-point-validity-domain-as-the-grid-cell-edges.md) | Define the point validity domain as the grid cell edges | Accepted | 2026-10-25 |
 | [0012](0012-use-a-95-percent-valid-day-threshold-for-complete-years-and-months.md) | Use a 95% valid-day threshold for complete years and months | Accepted | 2026-10-25 |
 | [0013](0013-serve-point-results-and-charts-from-stateless-get-urls-that-re-read-the-cell.md) | Serve point results and charts from stateless GET URLs that re-read the cell | Accepted | 2026-10-25 |
+| [0014](0014-define-the-tabular-export-format-for-csv-and-xlsx.md) | Define the tabular export format for CSV and XLSX | Accepted | 2026-10-25 |
