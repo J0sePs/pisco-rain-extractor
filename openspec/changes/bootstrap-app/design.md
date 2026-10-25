@@ -5,7 +5,8 @@
 See `proposal.md` (Why) and the specs `dataset-catalog` and `web-shell` for behavior.
 This is the first change: there is no code yet. It follows the accepted ADRs:
 ADR-0002 (FastAPI + Jinja2), ADR-0003 (uv), ADR-0004 (layers), ADR-0005 (lazy xarray reads),
-ADR-0007 (calendar from the time index).
+ADR-0007 (calendar from the time index), ADR-0008 (catalog-only climatology),
+ADR-0010 (order-aware latitude selection with float tolerance).
 
 Facts observed in the real files (inspected lazily, metadata only):
 
@@ -260,6 +261,7 @@ Memory: works on the 1-D coordinate only; the resulting slice is applied lazily.
 Rejected: `ds.sortby(lat)` at open time – reorders the whole array, breaks lazy reads and the
 chunk layout. Rejected: exact comparisons without tolerance – drops border rows with float32
 coordinates. Rejected: rounding coordinates at open – changes the file's own values.
+See ADR-0010.
 
 ### D11. Climatology scope and per-file grids
 `PISCOp_clim2.nc` is **catalogued only**: its metadata appears on `/dataset` (units shown as
