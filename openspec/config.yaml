@@ -25,7 +25,7 @@ context: |
   - Charts: matplotlib with the Agg backend, served as PNG.
   - Exports: CSV (pandas) and XLSX (openpyxl).
   - Settings: pydantic-settings with environment variables (DATA_DIR defaults to data/).
-  - Quality: pytest + httpx (FastAPI TestClient), ruff (lint + format).
+  - Quality: pytest + httpx2 (FastAPI TestClient), ruff (lint + format).
 
   Architecture: Layered.
   - routes (app/routes/): parse form input, call services, render templates; no business logic.
