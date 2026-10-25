@@ -1,13 +1,27 @@
-"""Point pages: the request form, the tabbed result and its PNG charts (ADR-0013)."""
+"""Point pages: the request form, the tabbed result, its PNG charts and file downloads.
 
+Every result, chart and download URL is stateless (ADR-0013); exports follow ADR-0014.
+"""
+
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 
+from app.repositories.pisco_repository import PiscoRepository
 from app.routes.pages import RepositoryDep, templates
-from app.services.analysis_service import analyze_point, daily_page
+from app.services.analysis_service import PointAnalysis, analyze_point, daily_page
 from app.services.chart_service import ChartKind, render_png
+from app.services.export_service import (
+    CSV_MEDIA_TYPE,
+    XLSX_MEDIA_TYPE,
+    ExportTable,
+    export_filename,
+    table_frame,
+    to_csv,
+    to_xlsx,
+)
 from app.services.point_service import (
     NoDataError,
     PointForm,
@@ -127,14 +141,78 @@ def point_chart(
         chart = ChartKind(kind)
     except ValueError:
         raise HTTPException(status_code=404, detail="Unknown chart") from None
+    try:
+        analysis = _analysis_from_query(repo, PointForm(lon, lat, start_year, end_year))
+    except _InputRejected as exc:
+        return PlainTextResponse(str(exc), status_code=422)
+    return Response(render_png(chart, analysis), media_type="image/png")
+
+
+@router.get("/point/export/{table}.csv")
+def point_export_csv(
+    table: str,
+    repo: RepositoryDep,
+    lon: QueryText = "",
+    lat: QueryText = "",
+    start_year: QueryText = "",
+    end_year: QueryText = "",
+) -> Response:
+    """Download one table of the point described by the query string as CSV (ADR-0014)."""
+    try:
+        export = ExportTable(table)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Unknown table") from None
+    try:
+        analysis = _analysis_from_query(repo, PointForm(lon, lat, start_year, end_year))
+    except _InputRejected as exc:
+        return PlainTextResponse(str(exc), status_code=422)
+    return _attachment(
+        to_csv(table_frame(export, analysis)),
+        CSV_MEDIA_TYPE,
+        export_filename(analysis.result, export),
+    )
+
+
+@router.get("/point/export.xlsx")
+def point_export_xlsx(
+    repo: RepositoryDep,
+    lon: QueryText = "",
+    lat: QueryText = "",
+    start_year: QueryText = "",
+    end_year: QueryText = "",
+) -> Response:
+    """Download every table of the point described by the query string as one workbook."""
+    try:
+        analysis = _analysis_from_query(repo, PointForm(lon, lat, start_year, end_year))
+    except _InputRejected as exc:
+        return PlainTextResponse(str(exc), status_code=422)
+    return _attachment(
+        to_xlsx(analysis, datetime.now(UTC)),
+        XLSX_MEDIA_TYPE,
+        export_filename(analysis.result, None),
+    )
+
+
+class _InputRejected(ValueError):
+    """Invalid query of a PNG or file route; the message is returned as 422 plain text."""
+
+
+def _analysis_from_query(repo: PiscoRepository, form: PointForm) -> PointAnalysis:
+    """Validate, read the cell once and analyze it; unavailable data or no data raise 404."""
     if year_defaults(repo) is None:
         raise HTTPException(status_code=404, detail="Daily data is not available")
     try:
-        result = extract_point(
-            repo, validate_point(repo, PointForm(lon, lat, start_year, end_year))
-        )
+        result = extract_point(repo, validate_point(repo, form))
     except PointInputError as exc:
-        return PlainTextResponse(str(exc), status_code=422)
+        raise _InputRejected(str(exc)) from None
     except NoDataError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from None
-    return Response(render_png(chart, analyze_point(result)), media_type="image/png")
+    return analyze_point(result)
+
+
+def _attachment(content: bytes, media_type: str, filename: str) -> Response:
+    return Response(
+        content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

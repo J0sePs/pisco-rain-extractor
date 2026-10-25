@@ -123,6 +123,11 @@ button.primary { background: var(--accent); color: #fff; border: 1px solid var(-
 .pager { display: flex; gap: 1rem; align-items: center; }
 .note { font-size: 0.85rem; color: var(--muted); }
 .back-link { color: var(--accent); font-weight: 600; }
+.downloads { margin: 1rem 0; padding: 0.75rem 1rem; border: 1px solid var(--border); }
+.downloads h2 { margin: 0 0 0.5rem; font-size: 1rem; }
+.downloads ul { display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; margin: 0; padding: 0; list-style: none; }
+.downloads a { color: var(--accent); font-weight: 600; }
+.downloads .note { margin: 0.5rem 0 0; }
 .back-link:visited { color: var(--accent); }
 .result tr.incomplete td { color: var(--muted); background: var(--warn-bg); }
 

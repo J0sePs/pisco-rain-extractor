@@ -10,6 +10,17 @@
 <p>Cell longitude {{ result.cell.lon }}, latitude {{ result.cell.lat }},
   {{ result.period_start }} to {{ result.period_end }}. <a class="back-link" href="/point">New request</a></p>
 
+<nav class="downloads" aria-label="Downloads">
+  <h2>Downloads</h2>
+  <ul>
+    <li><a href="/point/export/daily.csv?{{ query }}" download>Daily CSV</a></li>
+    <li><a href="/point/export/annual.csv?{{ query }}" download>Annual CSV</a></li>
+    <li><a href="/point/export/climatology.csv?{{ query }}" download>Climatology CSV</a></li>
+    <li><a href="/point/export.xlsx?{{ query }}" download>Excel workbook (.xlsx)</a></li>
+  </ul>
+  <p class="note">CSV files are for R and Python. To open the data in Excel, use the .xlsx workbook: with Spanish regional settings, Excel does not split the columns of a comma-separated file.</p>
+</nav>
+
 <div class="result" id="result">
   <nav class="tabs" aria-label="Result">
     <a href="#summary">Summary</a>
