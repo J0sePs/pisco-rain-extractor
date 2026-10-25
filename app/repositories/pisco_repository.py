@@ -1,7 +1,7 @@
 """Access to the PISCOp v3.0 NetCDF files.
 
 This is the only module that opens NetCDF files (ADR-0004). Files are opened once and lazily
-(ADR-0005): only 1-D coordinates are read, never precipitation values.
+(ADR-0005): opening reads only 1-D coordinates; precipitation is read one cell at a time.
 """
 
 from __future__ import annotations
@@ -218,6 +218,42 @@ def _describe(
     )
 
 
+@dataclass(frozen=True)
+class GridExtent:
+    """Outer cell edges of a grid: cell centers ± half the resolution (ADR-0011)."""
+
+    lon_min: float
+    lon_max: float
+    lat_min: float
+    lat_max: float
+
+    def contains(self, lon: float, lat: float) -> bool:
+        """Return True when the point lies inside the edges (edges included)."""
+        return self.lon_min <= lon <= self.lon_max and self.lat_min <= lat <= self.lat_max
+
+
+@dataclass(frozen=True)
+class CellRef:
+    """One grid cell: its positions in the file and its center (rounded to 4 decimals)."""
+
+    lat_index: int
+    lon_index: int
+    lon: float
+    lat: float
+
+
+def _nearest_index(coord: np.ndarray, value: float, tol: float = LAT_TOLERANCE_DEG) -> int:
+    """Index of the center nearest to `value`; ties within `tol` go to the larger coordinate.
+
+    Ties are resolved explicitly (ADR-0011) instead of by float noise, so the result is the same
+    for float32 or float64 coordinates and for ascending or descending axes.
+    """
+    centers = np.asarray(coord, dtype=float)
+    distance = np.abs(centers - value)
+    candidates = np.flatnonzero(distance <= distance.min() + tol)
+    return int(candidates[np.argmax(centers[candidates])])
+
+
 @dataclass
 class _Entry:
     metadata: DatasetMetadata
@@ -266,6 +302,65 @@ class PiscoRepository:
     def time_index(self, kind: DatasetKind) -> pd.Index | None:
         """Return the calendar of one file, or None if the file is unavailable."""
         return self._entries[kind].time_index
+
+    def grid_extent(self) -> GridExtent | None:
+        """Outer cell edges of the daily grid, or None if the daily file is unavailable."""
+        meta = self.metadata(DatasetKind.DAILY)
+        if not meta.available or meta.resolution_deg is None:
+            return None
+        half = meta.resolution_deg / 2
+        return GridExtent(
+            lon_min=_rounded(meta.lon_min - half),
+            lon_max=_rounded(meta.lon_max + half),
+            lat_min=_rounded(meta.lat_min - half),
+            lat_max=_rounded(meta.lat_max + half),
+        )
+
+    def nearest_cell(self, lon: float, lat: float) -> CellRef:
+        """Daily grid cell nearest to the point (ADR-0006, ties per ADR-0011).
+
+        Only the 1-D coordinates are used; no precipitation value is read.
+        """
+        ds, meta = self._daily()
+        lats = ds[meta.lat_name].values
+        lons = ds[meta.lon_name].values
+        i = _nearest_index(lats, lat)
+        j = _nearest_index(lons, lon)
+        return CellRef(lat_index=i, lon_index=j, lon=_rounded(lons[j]), lat=_rounded(lats[i]))
+
+    def read_cell_series(self, cell: CellRef, start: date, end: date) -> pd.Series:
+        """Daily precipitation (mm, NaN = missing) of one cell from `start` to `end` inclusive.
+
+        The period is located on the daily calendar (ADR-0007), never on raw time values, and a
+        single `isel` reads only that cell for that period (ADR-0005).
+        """
+        ds, meta = self._daily()
+        index = self.time_index(DatasetKind.DAILY)
+        assert index is not None  # available daily file always has a calendar
+        positions = np.flatnonzero((index >= pd.Timestamp(start)) & (index <= pd.Timestamp(end)))
+        if positions.size == 0:
+            return pd.Series([], index=pd.DatetimeIndex([], name="date"), dtype=float)
+        first, last = int(positions[0]), int(positions[-1])
+        values = (
+            ds[meta.variable]
+            .isel(
+                {
+                    meta.time_name: slice(first, last + 1),
+                    meta.lat_name: cell.lat_index,
+                    meta.lon_name: cell.lon_index,
+                }
+            )
+            .values
+        )
+        return pd.Series(
+            values.astype(float), index=index[first : last + 1], name="precipitation_mm"
+        )
+
+    def _daily(self) -> tuple[xr.Dataset, DatasetMetadata]:
+        entry = self._entries[DatasetKind.DAILY]
+        if entry.dataset is None:
+            raise ValueError("daily data is not available")
+        return entry.dataset, entry.metadata
 
     def close(self) -> None:
         """Close every open file handle."""
