@@ -119,10 +119,68 @@ names both months; startup SHALL continue and both files SHALL stay available.
 - **AND** both files carry the warning "Period mismatch: daily file ends in 2025-12, monthly
   file ends in 2024-12"
 
+#### Scenario: Daily file ends mid-month
+- **GIVEN** a daily file with 16426 steps (last day 2025-12-21) and a monthly file with
+  540 steps (last month 2025-12)
+- **WHEN** the application starts
+- **THEN** no period warning is attached to either file, because both end in 2025-12
+
 #### Scenario: Monthly file missing
 - **GIVEN** the daily file is present and the monthly file is missing
 - **WHEN** the application starts
 - **THEN** no period warning is attached to the daily file
+
+### Requirement: Latitude order independence
+The system SHALL report bounds and select latitude ranges correctly whether a file stores
+latitudes in descending order (north to south, as PISCOp v3.0) or ascending order, and SHALL
+keep grid rows whose stored coordinate differs from a requested bound by at most 1e-6 degrees.
+
+#### Scenario: Descending latitude bounds
+- **GIVEN** a file with latitudes stored from 1.95 down to -18.95 in steps of 0.1
+- **WHEN** the file is opened
+- **THEN** its bounds are latitude -18.95 to 1.95 and its resolution is 0.1°
+
+#### Scenario: Ascending latitude bounds
+- **GIVEN** the same grid with latitudes stored from -18.95 up to 1.95
+- **WHEN** the file is opened
+- **THEN** its reported bounds and resolution are identical to the descending case
+
+#### Scenario: Latitude range on a descending grid
+- **GIVEN** latitudes 1.95, 1.85, ..., -18.95 and a requested range from south -1.05 to north 0.95
+- **WHEN** the latitude rows in that range are selected
+- **THEN** 21 rows are selected, from 0.95 down to -1.05, not zero
+
+#### Scenario: Border stored as float32
+- **GIVEN** float32 latitudes on a descending grid where the southern border row is stored as
+  -1.05000007 (the float32 value just beyond -1.05)
+- **WHEN** the range from south -1.05 to north 0.95 is selected
+- **THEN** 21 rows are selected, including the border row
+
+#### Scenario: Range outside the grid
+- **GIVEN** latitudes from 1.95 down to -18.95
+- **WHEN** the range from south 5.0 to north 6.0 is selected
+- **THEN** no rows are selected
+
+### Requirement: Grids described per file
+The system SHALL describe each file's grid independently and SHALL NOT assume that the daily,
+monthly and climatology grids are identical.
+
+#### Scenario: Climatology with a different grid
+- **GIVEN** a daily file of 210 x 174 cells (longitude -81.35 to -64.05) and a climatology file
+  of 210 x 180 cells (longitude -81.95 to -64.05)
+- **WHEN** a user opens `GET /dataset`
+- **THEN** each file shows its own grid size and bounds
+- **AND** no warning is raised for the difference between the grids
+
+### Requirement: Climatology is catalog-only
+The climatology file SHALL be listed on `/dataset` with its metadata only; its precipitation
+values SHALL NOT be available to analysis features.
+
+#### Scenario: Climatology data access refused
+- **GIVEN** the climatology file is available
+- **WHEN** any feature requests its precipitation data from the repository
+- **THEN** the request is rejected with the message "climatology is catalog-only"
+- **AND** its metadata is still listed on `/dataset`
 
 ### Requirement: Configurable calendar start dates
 The start dates used to build the daily and monthly calendars SHALL come from the application
@@ -159,7 +217,7 @@ resolution in degrees, and time range.
 #### Scenario: Variable without units
 - **GIVEN** the climatology variable has no `units` attribute
 - **WHEN** a user opens `GET /dataset`
-- **THEN** the units are shown as "not specified"
+- **THEN** the units are shown as "not provided"
 
 ### Requirement: Warn about unavailable files
 `GET /dataset` SHALL show a clearly visible warning for each unavailable file, with its

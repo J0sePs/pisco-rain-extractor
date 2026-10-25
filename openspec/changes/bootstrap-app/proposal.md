@@ -31,6 +31,7 @@ Building it first fixes the architecture before any business logic exists.
 ### Out of scope
 
 - Point or basin extraction, analysis, charts and exports (later changes).
+- Using the climatology file for analysis (it is catalogued only).
 - Coordinate conversion (UTM), file uploads, any JavaScript.
 - Deployment, Docker, CI configuration.
 

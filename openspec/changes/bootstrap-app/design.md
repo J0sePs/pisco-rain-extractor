@@ -13,7 +13,9 @@ Facts observed in the real files (inspected lazily, metadata only):
 |---|---|---|---|---|---|
 | `PISCOp_d.nc` | `precipitation` | `Z1` 16436, `latitude` 210, `longitude` 174 | 1.95 → -18.95 (descending) | -81.35 → -64.05 | `mm` |
 | `PISCOp_m.nc` | `precipitation` | `Z1` 540, 210, 174 | same | same | `mm` |
-| `PISCOp_clim2.nc` | `PISCOp_clim2` | `Z1` 12, 210, 180 | same | -81.95 → -64.05 | none |
+| `PISCOp_clim2.nc` | `PISCOp_clim2` | `Z1` 12, 210, 180 | same | -81.95 → -64.05 | none (catalog-only, D11) |
+
+Coordinates are float64 in the real files; the design tolerates float32 (D10).
 
 `Z1` is an integer index (1..N, `units: unknown`), not a date. 16436 days = 1981-01-01 to
 2025-12-31; 540 months = 1981-01 to 2025-12. Chunking of the daily file is
@@ -116,13 +118,16 @@ class PiscoRepository:
     def open(cls, settings: Settings) -> "PiscoRepository": ...   # never raises for bad files
     def metadata(self, kind: DatasetKind) -> DatasetMetadata: ...
     def all_metadata(self) -> list[DatasetMetadata]: ...      # order: daily, monthly, clim
-    def dataset(self, kind: DatasetKind) -> xr.Dataset | None: ...  # lazy handle, for later changes
+    def dataset(self, kind: DatasetKind) -> xr.Dataset | None: ...  # lazy handle, for later changes;
+                                       # raises ValueError("climatology is catalog-only") (D11)
     def time_index(self, kind: DatasetKind) -> pd.Index | None: ...
     def close(self) -> None: ...
 ```
 Helper functions (module level, pure, unit-tested): `detect_names(ds) -> DetectedNames`
 `build_time_index(kind: DatasetKind, n: int, start: date | None) -> pd.Index` and
-`check_period_consistency(daily: pd.Index, monthly: pd.Index) -> str | None`.
+`check_period_consistency(daily: pd.Index, monthly: pd.Index) -> str | None` and
+`lat_slice(lat: np.ndarray, south: float, north: float, tol: float = LAT_TOLERANCE_DEG) -> slice`
+with `LAT_TOLERANCE_DEG = 1e-6` (D10).
 The repository receives the start dates from `Settings`; it never defines them itself.
 
 Service (`app/services/dataset_service.py`):
@@ -131,7 +136,7 @@ Service (`app/services/dataset_service.py`):
 class DatasetSummary:
     filename: str; kind: str; available: bool
     warnings: list[str]                # unavailability reason and/or period mismatch
-    variables: list[tuple[str, str]]   # (name, units or "not specified")
+    variables: list[tuple[str, str]]   # (name, units or "not provided")
     grid: str | None                   # "210 x 174"
     lat_range: str | None; lon_range: str | None; resolution: str | None   # "0.1°"
     period: str | None                 # "1981-01-01 to 2025-12-31" / "months 1 to 12"
@@ -217,14 +222,56 @@ unavailable files also mention `data/README.md`; available files with warnings s
 their details). One stylesheet `app/static/css/style.css`. No `<script>`.
 
 ### D9. Tests
-`tests/conftest.py` builds synthetic NetCDF files with the PISCOp layout in `tmp_path`
-(5 lat x 4 lon, descending latitudes, `Z1` integer index; daily with 16436 steps ≈ 1.3 MB,
-monthly 540 by default or a custom length such as 528 for the mismatch test, climatology 12
-with variable `PISCOp_clim2` and no units) and exposes:
+`tests/conftest.py` builds synthetic NetCDF files in `tmp_path` that mimic the real structure:
+- Time dim `Z1`: int32 values 1..N with `units: "unknown"` (no dates), opened with
+  `decode_times=False`. Daily 16436 steps (≈ 1.3 MB on a 5 x 4 grid), monthly 540 by default
+  or a custom length such as 528 for the mismatch test, climatology 12.
+- Latitude `latitude`: **descending** from 1.95 in steps of -0.1; longitude `longitude`:
+  ascending from -81.35. Coordinates are stored as **float32** (worst case for rounding; the
+  real files use float64), with `units` `degrees_north` / `degrees_east`.
+- Daily and monthly: variable `precipitation` (float32, `units: "mm"`, `grid_mapping: "crs"`)
+  plus a scalar `crs` variable.
+- Climatology: variable `PISCOp_clim2` **without `units`**, on a grid with **one more
+  longitude** than the daily file (5 x 5 vs 5 x 4, starting at -81.45), like the real 180 vs 174.
+- `tests/test_fixtures.py` asserts these properties so the fixtures cannot drift from them.
+
+The fixtures module exposes:
 `data_dir` (all three files), a factory for custom/corrupt files, and `client`
 (`TestClient(create_app(Settings(data_dir=...)))` used as a context manager so the lifespan runs).
 ruff in `pyproject.toml`: `line-length = 100`, `target-version = "py312"`,
 `select = ["E", "F", "I", "UP", "B", "SIM"]`. pytest: `testpaths = ["tests"]`.
+
+### D10. Latitude order and float tolerance
+PISCOp stores latitude north to south (descending). `ds.sel(lat=slice(south, north))` on a
+descending axis silently returns **zero rows**, so **`slice()` is never applied directly to
+latitude**. Every latitude range goes through `lat_slice(lat, south, north)`:
+- Descending (`lat[0] > lat[-1]`): `slice(north + tol, south - tol)`; ascending:
+  `slice(south - tol, north + tol)`.
+- `tol = LAT_TOLERANCE_DEG = 1e-6` degrees, so a border row stored as float32 (for example
+  -1.05 stored as -1.05000007) is not lost. 1e-6° ≈ 0.1 m, far below the 0.1° grid spacing,
+  so no neighboring row can be included by mistake.
+- Bounds use `min`/`max`, never first/last; `method="nearest"` (ADR-0006) does not depend on
+  order. Longitude is ascending in all files but uses the same helper rule if a range is needed.
+- In this change only bounds use it directly; `lat_slice` is delivered and tested now so
+  point and basin extraction reuse it.
+- `/adr-review` and the integration verification check that no `slice(` is applied to
+  latitude outside `lat_slice`.
+Memory: works on the 1-D coordinate only; the resulting slice is applied lazily.
+Rejected: `ds.sortby(lat)` at open time – reorders the whole array, breaks lazy reads and the
+chunk layout. Rejected: exact comparisons without tolerance – drops border rows with float32
+coordinates. Rejected: rounding coordinates at open – changes the file's own values.
+
+### D11. Climatology scope and per-file grids
+`PISCOp_clim2.nc` is **catalogued only**: its metadata appears on `/dataset` (units shown as
+"not provided" because the file has no `units`), but `PiscoRepository.dataset(CLIMATOLOGY)`
+raises `ValueError("climatology is catalog-only")`. The monthly climatology in later changes is
+computed from the daily file. Each file keeps its own coordinates and metadata; no code
+compares, aligns or combines grids across files (daily/monthly 210 x 174, climatology 210 x 180).
+Rejected: using `PISCOp_clim2` for analysis – its period (normals 1991-2015 per
+`data/readme.txt`) and its grid (180 longitudes) do not match the daily series users extract,
+so results would be inconsistent. Rejected: regridding it to the daily grid – adds a derived
+dataset and interpolation choices outside scope.
+See ADR-0008: Catalog the PISCOp climatology file without using it for analysis.
 
 ## Risks / Trade-offs
 
@@ -233,9 +280,11 @@ ruff in `pyproject.toml`: `line-length = 100`, `target-version = "py312"`,
   cross-check (D7) flags inconsistencies; recorded in ADR-0007.
 - [A shift applied equally to both files would not be detected by D7] → Accepted; it would
   require a wrong start date in settings, which is a reviewed change.
-- [Climatology grid has 180 longitudes, daily has 174] → Metadata is per file; later changes
-  must not assume the grids are identical.
-- [Descending latitude] → Bounds use min/max, never first/last.
+- [Climatology grid has 180 longitudes, daily has 174] → Metadata is per file and the
+  climatology is catalog-only (D11); later changes must not assume the grids are identical.
+- [Descending latitude: a direct `slice()` returns zero rows] → `lat_slice` (D10) with its own
+  tests on descending, ascending and float32 grids; bounds use min/max.
+- [float32 coordinates lose border rows] → 1e-6° tolerance in `lat_slice` (D10).
 - [File locks on Windows during tests] → Repository `close()` in lifespan shutdown; fixtures
   use the client as a context manager.
 - [Large initial dependency set (geopandas)] → Accepted by D1; uv lock keeps it reproducible.
