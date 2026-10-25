@@ -7,12 +7,27 @@ import numpy as np
 import pandas as pd
 import pytest
 from matplotlib.container import ErrorbarContainer
+from matplotlib.patches import Polygon as PolygonPatch
 from matplotlib.patches import Rectangle
+from shapely.geometry import Polygon, box
 
 from app.repositories.pisco_repository import CellRef
 from app.services import chart_service
-from app.services.analysis_service import PointAnalysis, analyze_point
-from app.services.chart_service import ChartKind, build_figure, render_png
+from app.services.analysis_service import (
+    BasinAnalysis,
+    PointAnalysis,
+    analyze_basin,
+    analyze_point,
+)
+from app.services.basin_geometry import BasinGeometry
+from app.services.basin_service import BasinCell, BasinResult
+from app.services.chart_service import (
+    BASIN_CHARTS,
+    POINT_CHARTS,
+    ChartKind,
+    build_figure,
+    render_png,
+)
 from app.services.point_service import PointResult
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -104,7 +119,7 @@ def test_daily_chart_has_one_line() -> None:
     assert len(ax.lines[0].get_xdata()) == 365
 
 
-@pytest.mark.parametrize("kind", list(ChartKind))
+@pytest.mark.parametrize("kind", POINT_CHARTS)
 def test_render_png(kind: ChartKind) -> None:
     assert render_png(kind, _analysis(_series(1981, 1982), 1981, 1982)).startswith(PNG_SIGNATURE)
 
@@ -112,10 +127,12 @@ def test_render_png(kind: ChartKind) -> None:
 def test_rendering_never_imports_pyplot() -> None:
     code = (
         "import sys\n"
-        "from tests.test_chart_service import _analysis, _series\n"
-        "from app.services.chart_service import ChartKind, render_png\n"
-        "for kind in ChartKind:\n"
+        "from tests.test_chart_service import _analysis, _basin_analysis, _series\n"
+        "from app.services.chart_service import BASIN_CHARTS, POINT_CHARTS, render_png\n"
+        "for kind in POINT_CHARTS:\n"
         "    render_png(kind, _analysis(_series(1981, 1981), 1981, 1981))\n"
+        "for kind in BASIN_CHARTS:\n"
+        "    render_png(kind, _basin_analysis())\n"
         "assert 'matplotlib.pyplot' not in sys.modules, 'pyplot was imported'\n"
     )
     subprocess.run([sys.executable, "-c", code], cwd=ROOT, check=True)
@@ -131,3 +148,67 @@ def test_module_imports_neither_fastapi_nor_pyplot() -> None:
     }
     assert not {m.split(".")[0] for m in modules} & {"fastapi", "starlette", "xarray"}
     assert "matplotlib.pyplot" not in modules
+
+
+# --- basin charts ----------------------------------------------------------------------------
+
+BASIN_WITH_HOLE = Polygon(
+    [(-76.40, -12.50), (-76.20, -12.50), (-76.20, -12.30), (-76.40, -12.30)],
+    holes=[[(-76.33, -12.43), (-76.27, -12.43), (-76.27, -12.37), (-76.33, -12.37)]],
+)
+
+
+def _basin_analysis(geometry: Polygon | None = None) -> BasinAnalysis:
+    series = _series(1981, 1982)
+    outline = geometry or box(-76.40, -12.50, -76.20, -12.30)
+    return analyze_basin(
+        BasinResult(
+            basin=BasinGeometry("basin.geojson", 1, outline),
+            area_km2=481.2,
+            centroid_lon=-76.3,
+            centroid_lat=-12.4,
+            fallback=False,
+            cells=[
+                BasinCell(-76.35, -12.35, True, 730),
+                BasinCell(-76.25, -12.35, True, 730),
+                BasinCell(-76.35, -12.45, False, 0),
+                BasinCell(-76.25, -12.45, True, 730),
+            ],
+            resolution_deg=0.1,
+            start_year=1981,
+            end_year=1982,
+            period_start=series.index[0].date(),
+            period_end=series.index[-1].date(),
+            total_days=len(series),
+            missing_days=0,
+            series=series,
+        )
+    )
+
+
+@pytest.mark.parametrize("kind", BASIN_CHARTS)
+def test_render_basin_png(kind: ChartKind) -> None:
+    assert render_png(kind, _basin_analysis()).startswith(PNG_SIGNATURE)
+
+
+def test_cells_map_content() -> None:
+    ax = build_figure(ChartKind.CELLS, _basin_analysis()).axes[0]
+    legend = [text.get_text() for text in ax.get_legend().get_texts()]
+    assert legend == ["Basin outline", "Used cell", "Excluded cell (no data)"]
+    assert ax.get_xlabel() == "Longitude (°)"
+    assert ax.get_ylabel() == "Latitude (°)"
+    outlines = [p for p in ax.patches if isinstance(p, PolygonPatch) and p.get_gid() == "outline"]
+    assert len(outlines) == 1
+    assert len([p for p in ax.patches if isinstance(p, Rectangle)]) == 4  # cell edges
+
+
+def test_cells_map_draws_every_ring() -> None:
+    ax = build_figure(ChartKind.CELLS, _basin_analysis(BASIN_WITH_HOLE)).axes[0]
+    assert len([p for p in ax.patches if p.get_gid() == "outline"]) == 2  # exterior and hole
+
+
+def test_charts_belong_to_their_result() -> None:
+    with pytest.raises(ValueError, match="not available"):
+        build_figure(ChartKind.LOCATION, _basin_analysis())
+    with pytest.raises(ValueError, match="not available"):
+        build_figure(ChartKind.CELLS, _analysis(_series(1981, 1981), 1981, 1981))

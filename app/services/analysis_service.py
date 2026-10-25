@@ -1,7 +1,8 @@
-"""Point analysis: completeness, annual statistics, mean annual rainfall, climatology, pages.
+"""Rainfall analysis: completeness, annual statistics, mean annual rainfall, climatology, pages.
 
-Pure functions on the daily series of one cell; no FastAPI and no NetCDF access. Completeness
-follows ADR-0012 and the climatology is computed from the daily series (ADR-0008).
+Pure functions on a daily series, the one of a cell or the areal series of a basin; no FastAPI
+and no NetCDF access. Completeness follows ADR-0012 and the climatology is computed from the
+daily series (ADR-0008).
 """
 
 import math
@@ -9,6 +10,7 @@ from dataclasses import dataclass
 
 import pandas as pd
 
+from app.services.basin_service import BasinResult
 from app.services.point_service import PointResult
 
 COMPLETENESS_PERCENT = 95
@@ -64,6 +66,19 @@ class PointAnalysis:
     annual: list[AnnualStat]
     mean_annual: MeanAnnual
     climatology: list[MonthlyClimate]
+
+
+@dataclass(frozen=True)
+class BasinAnalysis:
+    """Everything the basin result page, its charts and exports show."""
+
+    result: BasinResult
+    annual: list[AnnualStat]
+    mean_annual: MeanAnnual
+    climatology: list[MonthlyClimate]
+
+
+Analysis = PointAnalysis | BasinAnalysis
 
 
 def is_complete(valid_days: int, calendar_days: int) -> bool:
@@ -151,6 +166,17 @@ def analyze_point(result: PointResult) -> PointAnalysis:
     """Compute the annual statistics, mean annual rainfall and climatology of a result."""
     annual = annual_stats(result.series, result.start_year, result.end_year)
     return PointAnalysis(
+        result=result,
+        annual=annual,
+        mean_annual=mean_annual_rainfall(annual),
+        climatology=monthly_climatology(result.series, result.start_year, result.end_year),
+    )
+
+
+def analyze_basin(result: BasinResult) -> BasinAnalysis:
+    """Compute the same analysis as a point on the areal series of a basin (ADR-0016)."""
+    annual = annual_stats(result.series, result.start_year, result.end_year)
+    return BasinAnalysis(
         result=result,
         annual=annual,
         mean_annual=mean_annual_rainfall(annual),

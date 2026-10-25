@@ -12,9 +12,10 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse,
 from app.repositories.pisco_repository import PiscoRepository
 from app.routes.pages import RepositoryDep, templates
 from app.services.analysis_service import PointAnalysis, analyze_point, daily_page
-from app.services.chart_service import ChartKind, render_png
+from app.services.chart_service import POINT_CHARTS, ChartKind, render_png
 from app.services.export_service import (
     CSV_MEDIA_TYPE,
+    POINT_TABLES,
     XLSX_MEDIA_TYPE,
     ExportTable,
     export_filename,
@@ -140,7 +141,9 @@ def point_chart(
     try:
         chart = ChartKind(kind)
     except ValueError:
-        raise HTTPException(status_code=404, detail="Unknown chart") from None
+        chart = None
+    if chart not in POINT_CHARTS:
+        raise HTTPException(status_code=404, detail="Unknown chart")
     try:
         analysis = _analysis_from_query(repo, PointForm(lon, lat, start_year, end_year))
     except _InputRejected as exc:
@@ -161,7 +164,9 @@ def point_export_csv(
     try:
         export = ExportTable(table)
     except ValueError:
-        raise HTTPException(status_code=404, detail="Unknown table") from None
+        export = None
+    if export not in POINT_TABLES:
+        raise HTTPException(status_code=404, detail="Unknown table")
     try:
         analysis = _analysis_from_query(repo, PointForm(lon, lat, start_year, end_year))
     except _InputRejected as exc:

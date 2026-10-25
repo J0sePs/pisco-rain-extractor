@@ -142,8 +142,12 @@ def test_non_numeric_coordinate(ref_client: TestClient) -> None:
     assert response.text == "Longitude must be a number"
 
 
-def test_unknown_table(ref_client: TestClient, precipitation_reads: list[tuple[int, ...]]) -> None:
-    assert ref_client.get(f"/point/export/monthly.csv?{QUERY}").status_code == 404
+@pytest.mark.parametrize("table", ["monthly", "cells"])
+def test_unknown_table(
+    ref_client: TestClient, precipitation_reads: list[tuple[int, ...]], table: str
+) -> None:
+    # `cells` exists for basins only.
+    assert ref_client.get(f"/point/export/{table}.csv?{QUERY}").status_code == 404
     assert precipitation_reads == []
 
 

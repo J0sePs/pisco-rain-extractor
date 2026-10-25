@@ -5,11 +5,13 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
+from shapely.geometry import box
 
 from app.repositories.pisco_repository import CellRef
 from app.services import analysis_service
 from app.services.analysis_service import (
     AnnualStat,
+    analyze_basin,
     analyze_point,
     annual_stats,
     daily_page,
@@ -17,6 +19,8 @@ from app.services.analysis_service import (
     mean_annual_rainfall,
     monthly_climatology,
 )
+from app.services.basin_geometry import BasinGeometry
+from app.services.basin_service import BasinResult
 from app.services.point_service import PointResult
 
 
@@ -198,3 +202,45 @@ def test_module_imports_neither_fastapi_nor_xarray() -> None:
         for alias in node.names
     }
     assert not modules & {"fastapi", "starlette", "xarray"}
+
+
+def test_basin_series_analyzed_like_a_point() -> None:
+    series = _missing(_series("1981-01-01", "1983-12-31", 2.5), 20, "1982-03-01")
+    point = analyze_point(
+        PointResult(
+            lon=-76.15,
+            lat=-12.25,
+            cell=CellRef(lat_index=2, lon_index=2, lon=-76.15, lat=-12.25),
+            distance_km=0.0,
+            resolution_deg=0.1,
+            start_year=1981,
+            end_year=1983,
+            period_start=date(1981, 1, 1),
+            period_end=date(1983, 12, 31),
+            total_days=len(series),
+            missing_days=int(series.isna().sum()),
+            series=series,
+        )
+    )
+    basin = analyze_basin(
+        BasinResult(
+            basin=BasinGeometry("basin.geojson", 1, box(-76.3, -12.4, -76.1, -12.2)),
+            area_km2=481.4,
+            centroid_lon=-76.2,
+            centroid_lat=-12.3,
+            fallback=False,
+            cells=[],
+            resolution_deg=0.1,
+            start_year=1981,
+            end_year=1983,
+            period_start=date(1981, 1, 1),
+            period_end=date(1983, 12, 31),
+            total_days=len(series),
+            missing_days=int(series.isna().sum()),
+            series=series,
+        )
+    )
+    assert basin.annual == point.annual
+    assert basin.mean_annual == point.mean_annual
+    assert basin.climatology == point.climatology
+    assert not basin.annual[1].complete  # 1982: 20 missing days

@@ -210,8 +210,12 @@ def test_chart_png(
     assert precipitation_reads == [(1826,)]
 
 
-def test_unknown_chart(ref_client: TestClient, precipitation_reads: list[tuple[int, ...]]) -> None:
-    assert ref_client.get(f"/point/chart/pie.png?{QUERY}").status_code == 404
+@pytest.mark.parametrize("kind", ["pie", "cells"])
+def test_unknown_chart(
+    ref_client: TestClient, precipitation_reads: list[tuple[int, ...]], kind: str
+) -> None:
+    # `cells` exists for basins only.
+    assert ref_client.get(f"/point/chart/{kind}.png?{QUERY}").status_code == 404
     assert precipitation_reads == []
 
 
