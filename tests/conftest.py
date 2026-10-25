@@ -54,13 +54,15 @@ def write_pisco_file(
     lat_start: float = LAT_START,
     values: Callable[[tuple[int, int, int]], np.ndarray] | np.ndarray | None = None,
     coord_dtype: type = np.float32,
+    chunksizes: tuple[int, int, int] | None = None,
 ) -> Path:
     """Write a small NetCDF file with the PISCOp v3.0 layout and return its path.
 
     By default the time axis is an integer index 1..N with `units: unknown`, as in the real
     files. Pass CF units (e.g. "days since 1981-01-01") to build a file with real dates.
     `values` fills the precipitation grid (time, lat, lon) in descending-latitude order; it is
-    an array or a callable receiving the shape. Default: zeros.
+    an array or a callable receiving the shape. Default: zeros. `chunksizes` stores the
+    precipitation variable chunked (time, lat, lon), like the real files; default: contiguous.
     """
     lat = make_coords(n_lat, lat_start, STEP, ascending=False, dtype=coord_dtype)
     lon = make_coords(n_lon, lon_start, STEP, dtype=coord_dtype)
@@ -88,7 +90,10 @@ def write_pisco_file(
             attrs["units"] = units
         data_vars[variable] = ((time_name, lat_name, lon_name), grid, attrs)
     ds = xr.Dataset(data_vars=data_vars, coords=coords)
-    ds.to_netcdf(path, engine="netcdf4")
+    encoding = {}
+    if chunksizes is not None and include_precipitation:
+        encoding[variable] = {"chunksizes": chunksizes}
+    ds.to_netcdf(path, engine="netcdf4", encoding=encoding)
     ds.close()
     return path
 
@@ -147,7 +152,7 @@ def write_reference_dir(directory: Path, coord_dtype: type = np.float32, **kwarg
         kwargs.pop("daily_steps", DAILY_STEPS),  # type: ignore[arg-type]
         lat_start=REF_LAT_START,
         lon_start=REF_LON_START,
-        values=reference_values,
+        values=kwargs.pop("values", reference_values),  # type: ignore[arg-type]
         coord_dtype=coord_dtype,
         **kwargs,  # type: ignore[arg-type]
     )
@@ -164,6 +169,53 @@ def reference_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
 def reference_dir_float64(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Same as `reference_dir` with float64 coordinates, as in the real files."""
     return write_reference_dir(tmp_path_factory.mktemp("reference64"), coord_dtype=np.float64)
+
+
+BASIN_ALL_MISSING_DAY = 31  # 1981-02-01: every cell missing in the varied grid
+BASIN_CHUNKS = (100, 2, 2)
+
+
+def varied_values(shape: tuple[int, int, int]) -> np.ndarray:
+    """Cell (i, j) holds `i * 4 + j` mm on every day; all cells missing on 1981-02-01.
+
+    The all-missing cell of the reference grid (`NAN_CELL`) stays missing on every day.
+    """
+    n_time, n_lat, n_lon = shape
+    cells = (np.arange(n_lat)[:, None] * 4 + np.arange(n_lon)[None, :]).astype(np.float32)
+    grid = np.broadcast_to(cells[None, :, :], shape).astype(np.float32).copy()
+    if n_time > BASIN_ALL_MISSING_DAY:
+        grid[BASIN_ALL_MISSING_DAY] = np.nan
+    grid[:, NAN_CELL[0], NAN_CELL[1]] = np.nan
+    return grid
+
+
+def write_basin_dir(
+    directory: Path,
+    *,
+    values: Callable[[tuple[int, int, int]], np.ndarray] = reference_values,
+    chunksizes: tuple[int, int, int] | None = None,
+    **kwargs: object,
+) -> Path:
+    """Write a daily-only data directory on the reference grid for basin tests."""
+    return write_reference_dir(directory, values=values, chunksizes=chunksizes, **kwargs)
+
+
+@pytest.fixture(scope="session")
+def basin_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Reference grid and values, contiguous storage (shared, read-only)."""
+    return write_basin_dir(tmp_path_factory.mktemp("basin"))
+
+
+@pytest.fixture(scope="session")
+def varied_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Reference grid with a different constant value per cell (shared, read-only)."""
+    return write_basin_dir(tmp_path_factory.mktemp("varied"), values=varied_values)
+
+
+@pytest.fixture(scope="session")
+def chunked_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Reference grid and values stored in chunks of `BASIN_CHUNKS` (shared, read-only)."""
+    return write_basin_dir(tmp_path_factory.mktemp("chunked"), chunksizes=BASIN_CHUNKS)
 
 
 @pytest.fixture(scope="session")

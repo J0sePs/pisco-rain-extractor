@@ -6,6 +6,7 @@ This is the only module that opens NetCDF files (ADR-0004). Files are opened onc
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass, field, replace
 from datetime import date
 from enum import StrEnum
@@ -19,6 +20,7 @@ from app.config import Settings
 
 LAT_TOLERANCE_DEG = 1e-6
 CLIMATOLOGY_STEPS = 12
+UNCHUNKED_BLOCK_DAYS = 1461  # four years when the file has no time chunks (ADR-0017)
 
 _LAT_NAMES = {"lat", "latitude", "y"}
 _LON_NAMES = {"lon", "longitude", "x"}
@@ -164,6 +166,18 @@ def lat_slice(lat: np.ndarray, south: float, north: float, tol: float = LAT_TOLE
     return slice(south - tol, north + tol)
 
 
+def lon_slice(lon: np.ndarray, west: float, east: float, tol: float = LAT_TOLERANCE_DEG) -> slice:
+    """Return a label slice selecting longitudes in [west, east] (ADR-0010 equivalent helper).
+
+    PISCOp longitudes are ascending; a descending axis is rejected instead of silently
+    selecting nothing.
+    """
+    values = np.asarray(lon)
+    if values.size > 1 and values[0] > values[-1]:
+        raise ValueError("longitude axis must be ascending")
+    return slice(west - tol, east + tol)
+
+
 def _time_index(
     ds: xr.Dataset, names: DetectedNames, kind: DatasetKind, start: date | None
 ) -> pd.Index:
@@ -240,6 +254,27 @@ class CellRef:
     lon_index: int
     lon: float
     lat: float
+
+
+@dataclass(frozen=True)
+class GridBox:
+    """Grid rows and columns whose centers lie within a bounding box (ADR-0017).
+
+    `lat` keeps the file order and `lon` is ascending; both are rounded to 4 decimals as in
+    `CellRef`. The bounds are those used for the label slices.
+    """
+
+    lat: np.ndarray
+    lon: np.ndarray
+    west: float
+    south: float
+    east: float
+    north: float
+
+    @property
+    def size(self) -> int:
+        """Number of cells in the box."""
+        return int(self.lat.size * self.lon.size)
 
 
 def _nearest_index(coord: np.ndarray, value: float, tol: float = LAT_TOLERANCE_DEG) -> int:
@@ -374,6 +409,77 @@ class PiscoRepository:
             .values
         )
         return pd.Series(values.astype(float), index=index, name="precipitation_mm")
+
+    def grid_box(self, west: float, south: float, east: float, north: float) -> GridBox:
+        """Rows and columns of the daily grid whose centers lie within the bounds.
+
+        Only the 1-D coordinates are used; latitude goes through `lat_slice` (ADR-0010).
+        """
+        ds, meta = self._daily()
+        lat = ds[meta.lat_name]
+        lon = ds[meta.lon_name]
+        lat_values = lat.sel({meta.lat_name: lat_slice(lat.values, south, north)}).values
+        lon_values = lon.sel({meta.lon_name: lon_slice(lon.values, west, east)}).values
+        return GridBox(
+            lat=np.round(lat_values.astype(float), 4),
+            lon=np.round(lon_values.astype(float), 4),
+            west=west,
+            south=south,
+            east=east,
+            north=north,
+        )
+
+    def cell_box(self, cell: CellRef) -> GridBox:
+        """A box holding exactly one daily cell."""
+        return self.grid_box(cell.lon, cell.lat, cell.lon, cell.lat)
+
+    def time_block_length(self) -> int:
+        """Days per basin read block: the file's time chunk length (ADR-0017)."""
+        ds, meta = self._daily()
+        variable = ds[meta.variable]
+        chunks = variable.encoding.get("chunksizes")
+        if not chunks:
+            return UNCHUNKED_BLOCK_DAYS
+        return int(chunks[variable.dims.index(meta.time_name)])
+
+    def iter_box_blocks(
+        self, box: GridBox, start: date, end: date
+    ) -> Iterator[tuple[pd.DatetimeIndex, np.ndarray]]:
+        """Daily precipitation of `box` from `start` to `end`, one time block at a time.
+
+        Each block is one read of the box (float32, dims time, lat, lon; NaN = missing). Block
+        edges are aligned with the file's time chunks, so only one block is in memory
+        (ADR-0005, ADR-0017).
+        """
+        ds, meta = self._daily()
+        index = self.time_index(DatasetKind.DAILY)
+        assert index is not None  # available daily file always has a calendar
+        positions = np.flatnonzero((index >= pd.Timestamp(start)) & (index <= pd.Timestamp(end)))
+        if positions.size == 0 or box.size == 0:
+            return
+        lat = ds[meta.lat_name].values
+        lon = ds[meta.lon_name].values
+        selected = ds[meta.variable].sel(
+            {
+                meta.lat_name: lat_slice(lat, box.south, box.north),
+                meta.lon_name: lon_slice(lon, box.west, box.east),
+            }
+        )
+        length = self.time_block_length()
+        first, last = int(positions[0]), int(positions[-1]) + 1
+        block_start = first
+        while block_start < last:
+            block_end = min((block_start // length + 1) * length, last)
+            values = (
+                selected.isel({meta.time_name: slice(block_start, block_end)})
+                .transpose(meta.time_name, meta.lat_name, meta.lon_name)
+                .values
+            )
+            yield (
+                pd.DatetimeIndex(index[block_start:block_end]),
+                values.astype(np.float32, copy=False),
+            )
+            block_start = block_end
 
     def _daily(self) -> tuple[xr.Dataset, DatasetMetadata]:
         return self._open_series(DatasetKind.DAILY)

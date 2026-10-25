@@ -43,3 +43,19 @@ def test_climatology_has_no_units_and_another_grid(data_dir: Path) -> None:
         assert "units" not in clim["PISCOp_clim2"].attrs
         assert clim.sizes["Z1"] == 12
         assert clim.sizes["longitude"] != daily.sizes["longitude"]
+
+
+def test_basin_fixtures_shape_and_chunking(
+    basin_dir: Path, varied_dir: Path, chunked_dir: Path
+) -> None:
+    for directory in (basin_dir, varied_dir, chunked_dir):
+        with _open(directory / "PISCOp_d.nc") as ds:
+            assert ds["precipitation"].shape == (16436, 5, 4)
+    with _open(basin_dir / "PISCOp_d.nc") as ds:
+        assert ds["precipitation"].encoding.get("chunksizes") is None
+    with _open(chunked_dir / "PISCOp_d.nc") as ds:
+        assert tuple(ds["precipitation"].encoding["chunksizes"]) == (100, 2, 2)
+    with _open(varied_dir / "PISCOp_d.nc") as ds:
+        cell = ds["precipitation"].isel(Z1=slice(0, 40), latitude=2, longitude=1).values
+        assert np.all(cell[:31] == 9.0)  # i * 4 + j for (2, 1)
+        assert np.isnan(cell[31])  # 1981-02-01: every cell missing
