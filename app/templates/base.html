@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}pisco-rain-extractor{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='css/style.css').path }}">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/">pisco-rain-extractor</a>
+    <nav aria-label="Main">
+      <a href="/"{% if active == "home" %} aria-current="page"{% endif %}>Home</a>
+      <a href="/dataset"{% if active == "dataset" %} aria-current="page"{% endif %}>Dataset</a>
+    </nav>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="site-footer">
+    Rainfall data: PISCOp v3.0, property of SENAMHI (Servicio Nacional de Meteorología e
+    Hidrología del Perú). Source:
+    <a href="https://figshare.com/articles/dataset/High-resolution_grids_of_rainfall_for_Peru_-_PISCOp_v3_0_dataset/32411886">figshare</a>.
+  </footer>
+</body>
+</html>

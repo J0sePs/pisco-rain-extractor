@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Dataset · pisco-rain-extractor{% endblock %}
+{% block content %}
+<h1>Dataset</h1>
+<p>PISCOp v3.0 files found in the data directory.</p>
+{% for s in summaries %}
+<section class="dataset{% if not s.available %} unavailable{% endif %}" id="{{ s.kind }}">
+  <h2>{{ s.filename }} <span class="kind">{{ s.kind }}</span></h2>
+  {% for warning in s.warnings %}
+  <div class="warning" role="alert">
+    {{ warning }}{% if not s.available %}. See <code>data/README.md</code> for how to get the data.{% endif %}
+  </div>
+  {% endfor %}
+  {% if s.available %}
+  <dl>
+    <dt>Variables</dt>
+    <dd>{% for name, units in s.variables %}<code>{{ name }}</code> ({{ units }}){% if not loop.last %}, {% endif %}{% endfor %}</dd>
+    <dt>Grid (lat x lon)</dt><dd>{{ s.grid }}</dd>
+    <dt>Latitude</dt><dd>{{ s.lat_range }}</dd>
+    <dt>Longitude</dt><dd>{{ s.lon_range }}</dd>
+    <dt>Resolution</dt><dd>{{ s.resolution }}</dd>
+    <dt>Period</dt><dd>{{ s.period }}</dd>
+  </dl>
+  {% endif %}
+</section>
+{% endfor %}
+{% endblock %}
