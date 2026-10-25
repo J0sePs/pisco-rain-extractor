@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Point · pisco-rain-extractor{% endblock %}
+{% block content %}
+<h1>Point extraction</h1>
+{% if not available %}
+<div class="error" role="alert">
+  Daily data is not available. Check the <a href="/dataset">dataset page</a>.
+</div>
+{% else %}
+<p>Daily rainfall of the grid cell nearest to a point (WGS84 or UTM).</p>
+
+{% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
+
+<form method="post" action="/point" class="point-form">
+  <fieldset>
+    <legend>Point (WGS84, decimal degrees)</legend>
+    <label>Longitude <input name="lon" value="{{ form.lon }}" inputmode="decimal"></label>
+    <label>Latitude <input name="lat" value="{{ form.lat }}" inputmode="decimal"></label>
+    <label>Start year <input name="start_year" value="{{ form.start_year }}" inputmode="numeric"></label>
+    <label>End year <input name="end_year" value="{{ form.end_year }}" inputmode="numeric"></label>
+  </fieldset>
+  <fieldset>
+    <legend>Optional: UTM coordinate</legend>
+    <label>Easting (m) <input name="easting" value="{{ form.easting }}" inputmode="decimal"></label>
+    <label>Northing (m) <input name="northing" value="{{ form.northing }}" inputmode="decimal"></label>
+    <label>Zone
+      <select name="zone">
+        <option value="">–</option>
+        {% for z in ("17", "18", "19") %}<option value="{{ z }}"{% if form.zone == z %} selected{% endif %}>{{ z }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Hemisphere
+      <select name="hemisphere">
+        {% for h in ("South", "North") %}<option value="{{ h }}"{% if form.hemisphere == h %} selected{% endif %}>{{ h }}</option>{% endfor %}
+      </select>
+    </label>
+    <button type="submit" name="action" value="convert">Convert to longitude/latitude</button>
+  </fieldset>
+  <button type="submit" name="action" value="extract" class="primary">Extract daily series</button>
+</form>
+
+{% if no_data %}<div class="warning" role="alert">{{ no_data }}</div>{% endif %}
+
+{% if result %}
+<section class="result" id="result">
+  <h2>Result</h2>
+  <dl>
+    <dt>Requested point</dt><dd>longitude {{ result.lon }}, latitude {{ result.lat }}</dd>
+    <dt>Selected cell</dt><dd>longitude {{ result.cell.lon }}, latitude {{ result.cell.lat }}</dd>
+    <dt>Distance</dt><dd>{{ "%.3f"|format(result.distance_km) }} km</dd>
+    <dt>Period</dt><dd>{{ result.period_start }} to {{ result.period_end }}</dd>
+    <dt>Total days</dt><dd>{{ result.total_days }}</dd>
+    <dt>Missing days</dt><dd>{{ result.missing_days }}</dd>
+  </dl>
+  {% for title, rows in (("First days", result.head), ("Last days", result.tail)) %}
+  <table>
+    <caption>{{ title }}</caption>
+    <thead><tr><th scope="col">date</th><th scope="col">precipitation_mm</th></tr></thead>
+    <tbody>
+      {% for day, value in rows %}
+      <tr><td>{{ day }}</td><td>{% if value is none %}missing{% else %}{{ "%.2f"|format(value) }}{% endif %}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endfor %}
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}

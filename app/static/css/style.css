@@ -58,6 +58,39 @@ dd { margin: 0; }
   border-left: 4px solid var(--warn-border);
 }
 
+.error {
+  margin: 0.5rem 0;
+  padding: 0.6rem 0.8rem;
+  background: #fdecea;
+  border-left: 4px solid #b3261e;
+}
+
+.point-form fieldset {
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.point-form label {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin: 0 1rem 0.75rem 0;
+  font-size: 0.9rem;
+}
+
+.point-form input,
+.point-form select { width: 11rem; max-width: 100%; padding: 0.3rem; font: inherit; }
+
+button { padding: 0.45rem 0.9rem; font: inherit; cursor: pointer; }
+button.primary { background: var(--accent); color: #fff; border: 1px solid var(--accent); }
+
+.result table { border-collapse: collapse; margin: 1rem 1.5rem 0 0; display: inline-table; }
+.result caption { text-align: left; font-weight: 600; padding-bottom: 0.25rem; }
+.result th,
+.result td { padding: 0.25rem 0.75rem; border-bottom: 1px solid var(--border); text-align: left; }
+
 .site-footer {
   padding: 1rem;
   font-size: 0.85rem;

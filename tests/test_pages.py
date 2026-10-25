@@ -74,6 +74,7 @@ def test_navigation_marks_current_page(client: TestClient) -> None:
     html = client.get("/dataset").text
     assert re.search(r'<a href="/dataset" aria-current="page">', html)
     assert '<a href="/">' in html
+    assert '<a href="/point">' in html
     assert "SENAMHI" in html.split("<footer", 1)[1]
 
 

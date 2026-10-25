@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import Settings, get_settings
 from app.repositories.pisco_repository import PiscoRepository
-from app.routes import pages
+from app.routes import pages, point
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -30,6 +30,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="pisco-rain-extractor", lifespan=lifespan)
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     app.include_router(pages.router)
+    app.include_router(point.router)
     return app
 
 
