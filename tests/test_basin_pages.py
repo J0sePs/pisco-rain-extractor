@@ -339,6 +339,21 @@ def test_expired_result_removed_by_new_post(basin_client: TestClient, store_dir:
     assert EXPIRED in _text(basin_client.get(old).text)
 
 
+def test_expired_results_purged_at_startup(
+    make_client: Callable, reference_dir: Path, store_dir: Path
+) -> None:
+    store_dir.mkdir(parents=True)
+    expired = store_dir / "3f2b8c1e9d4a4b7c8e6f1a2b3c4d5e6f.json"
+    recent = store_dir / "9a1c3e5f7b2d4c6e8a0b1c2d3e4f5a6b.json"
+    for path in (expired, recent):
+        path.write_text("{}", encoding="utf-8")
+    stamp = time.time() - 25 * 3600
+    os.utime(expired, (stamp, stamp))
+    make_client(reference_dir, store_dir)  # runs the lifespan
+    assert not expired.exists()
+    assert recent.exists()
+
+
 FILE_SYSTEM_CALLS = (
     (os, "stat"),
     (os, "scandir"),
