@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Basin · pisco-rain-extractor{% endblock %}
+{% block content %}
+<h1>Basin extraction</h1>
+{% if expired %}
+<div class="warning" role="alert">This result has expired; <a href="/basin">upload the basin again</a></div>
+{% endif %}
+{% if not available %}
+<div class="error" role="alert">
+  Daily data is not available. Check the <a href="/dataset">dataset page</a>.
+</div>
+{% else %}
+<p>Areal mean daily rainfall of the PISCOp cells whose centers fall inside a basin.</p>
+
+{% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
+
+<form method="post" action="/basin" enctype="multipart/form-data" class="point-form">
+  <fieldset>
+    <legend>Basin boundary</legend>
+    <label>File (GeoJSON or zipped Shapefile, up to 10 MB)
+      <input type="file" name="basin_file" accept=".geojson,.json,.zip">
+    </label>
+    <label>Start year <input name="start_year" value="{{ start_year }}" inputmode="numeric"></label>
+    <label>End year <input name="end_year" value="{{ end_year }}" inputmode="numeric"></label>
+  </fieldset>
+  <button type="submit" class="primary">Extract basin rainfall</button>
+</form>
+<p class="note">A zipped Shapefile must include the .shp, .shx, .dbf and .prj files. Several
+  polygons are dissolved into one basin. The uploaded file is not kept; the result is kept on
+  the server for {{ retention_hours }} hours.</p>
+
+{% if no_data %}<div class="warning" role="alert">{{ no_data }}</div>{% endif %}
+
+{% endif %}
+{% endblock %}

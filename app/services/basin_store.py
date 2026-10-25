@@ -41,6 +41,11 @@ class BasinStore:
         self._directory = Path(directory)
         self._ttl_seconds = ttl.total_seconds()
 
+    @property
+    def ttl_hours(self) -> float:
+        """How long a result is kept, in hours (shown on the pages)."""
+        return self._ttl_seconds / 3600
+
     def save(self, result: BasinResult) -> str:
         """Purge expired results, then write `result` atomically and return its new id."""
         self.purge_expired()

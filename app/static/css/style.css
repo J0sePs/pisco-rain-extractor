@@ -109,7 +109,8 @@ button.primary { background: var(--accent); color: #fff; border: 1px solid var(-
 .result:has(#daily:target) a[href="#daily"],
 .result:has(#annual:target) a[href="#annual"],
 .result:has(#climatology:target) a[href="#climatology"],
-.result:has(#location:target) a[href="#location"] {
+.result:has(#location:target) a[href="#location"],
+.result:has(#cells:target) a[href="#cells"] {
   color: var(--fg);
   background: var(--bg);
   border-color: var(--border);

@@ -2,6 +2,7 @@ import re
 from collections.abc import Callable
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 MISMATCH = "Period mismatch: daily file ends in 2025-12, monthly file ends in 2024-12"
@@ -70,11 +71,14 @@ def test_period_mismatch_warning(make_client: Callable, make_data_dir: Callable)
         assert "5 x 4" in section  # details still shown
 
 
-def test_navigation_marks_current_page(client: TestClient) -> None:
-    html = client.get("/dataset").text
-    assert re.search(r'<a href="/dataset" aria-current="page">', html)
-    assert '<a href="/">' in html
-    assert '<a href="/point">' in html
+@pytest.mark.parametrize("current", ["/", "/point", "/basin", "/dataset"])
+def test_navigation_marks_current_page(client: TestClient, current: str) -> None:
+    html = client.get(current).text
+    nav = html.split('<nav aria-label="Main">', 1)[1].split("</nav>", 1)[0]
+    links = re.findall(r'<a href="([^"]+)"', nav)
+    assert links == ["/", "/point", "/basin", "/dataset"]
+    assert re.search(rf'<a href="{current}" aria-current="page">', nav)
+    assert len(re.findall("aria-current", nav)) == 1
     assert "SENAMHI" in html.split("<footer", 1)[1]
 
 

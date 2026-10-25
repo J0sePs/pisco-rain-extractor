@@ -235,15 +235,19 @@ def make_data_dir(tmp_path: Path) -> Callable[..., Path]:
 
 
 @pytest.fixture
-def make_client() -> Iterator[Callable[[Path], TestClient]]:
-    """Factory returning a started TestClient for a given data directory."""
+def make_client(tmp_path: Path) -> Iterator[Callable[..., TestClient]]:
+    """Factory returning a started TestClient for a given data directory.
+
+    The basin result store defaults to `tmp_path / "basins"`, never the repository's `uploads/`.
+    """
     from app.config import Settings
     from app.main import create_app
 
     clients: list[TestClient] = []
 
-    def factory(directory: Path) -> TestClient:
-        client = TestClient(create_app(Settings(data_dir=directory)))
+    def factory(directory: Path, store_dir: Path | None = None) -> TestClient:
+        settings = Settings(data_dir=directory, basin_store_dir=store_dir or tmp_path / "basins")
+        client = TestClient(create_app(settings))
         client.__enter__()  # run the lifespan (open files)
         clients.append(client)
         return client

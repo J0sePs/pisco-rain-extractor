@@ -1,8 +1,5 @@
 {% extends "base.html" %}
 {% set result = analysis.result %}
-{% set month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] %}
-{% macro mm(value, fmt) %}{% if value is none %}missing{% else %}{{ fmt|format(value) }}{% endif %}{% endmacro %}
-{% macro dash(value) %}{% if value is none %}–{% else %}{{ "%.1f"|format(value) }}{% endif %}{% endmacro %}
 {% macro chart(kind, alt) %}<img class="chart" src="/point/chart/{{ kind }}.png?{{ query }}" alt="{{ alt }}" loading="lazy">{% endmacro %}
 {% block title %}Point result · pisco-rain-extractor{% endblock %}
 {% block content %}
@@ -47,51 +44,9 @@
         years enter the mean.</p>
     </section>
 
-    <section class="tab" id="daily">
-      <h2>Daily</h2>
-      {{ chart("daily", "Daily precipitation of the selected cell") }}
-      <p class="pager">
-        {% if daily.page > 1 %}<a href="/point/result?{{ query }}&amp;page={{ daily.page - 1 }}#daily" rel="prev">Previous</a>{% endif %}
-        <span>Page {{ daily.page }} of {{ daily.page_count }}</span>
-        {% if daily.page < daily.page_count %}<a href="/point/result?{{ query }}&amp;page={{ daily.page + 1 }}#daily" rel="next">Next</a>{% endif %}
-      </p>
-      <table>
-        <thead><tr><th scope="col">date</th><th scope="col">precipitation_mm</th></tr></thead>
-        <tbody>
-          {% for day, value in daily.rows %}
-          <tr><td>{{ day }}</td><td>{{ mm(value, "%.2f") }}</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </section>
-
-    <section class="tab" id="annual">
-      <h2>Annual</h2>
-      {{ chart("annual-totals", "Annual total rainfall per year") }}
-      {{ chart("annual-maxima", "Annual maximum 24 h rainfall per year") }}
-      <table>
-        <thead><tr><th scope="col">Year</th><th scope="col">Total (mm)</th><th scope="col">Max 24 h (mm)</th><th scope="col">Valid days</th><th scope="col">Status</th></tr></thead>
-        <tbody>
-          {% for stat in analysis.annual %}
-          <tr{% if not stat.complete %} class="incomplete"{% endif %}><td>{{ stat.year }}</td><td>{{ mm(stat.total_mm, "%.1f") }}</td><td>{{ mm(stat.max_24h_mm, "%.3f") }}</td><td>{{ stat.valid_days }}</td><td>{{ "Complete" if stat.complete else "Incomplete" }}</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </section>
-
-    <section class="tab" id="climatology">
-      <h2>Climatology</h2>
-      {{ chart("climatology", "Mean monthly rainfall with standard deviation error bars") }}
-      <table>
-        <thead><tr><th scope="col">Month</th><th scope="col">Mean (mm)</th><th scope="col">Std. dev. (mm)</th><th scope="col">Years</th></tr></thead>
-        <tbody>
-          {% for month in analysis.climatology %}
-          <tr><td>{{ month_names[month.month - 1] }}</td><td>{{ dash(month.mean_mm) }}</td><td>{{ dash(month.std_mm) }}</td><td>{{ month.years }}</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      <p class="note">Computed from the daily series of this cell and period (complete months only).</p>
-    </section>
+{% with chart_src="/point/chart/", chart_query="?" ~ query, page_url="/point/result?" ~ query ~ "&page=", subject="cell", daily_alt="Daily precipitation of the selected cell" %}
+{% include "_analysis_tabs.html" %}
+{% endwith %}
 
     <section class="tab" id="location">
       <h2>Location</h2>

@@ -129,7 +129,7 @@ def test_no_data_cell(ref_client: TestClient) -> None:
 def test_navigation_marks_point(ref_client: TestClient) -> None:
     html = ref_client.get("/point").text
     nav = html.split("<nav", 1)[1].split("</nav>", 1)[0]
-    assert re.findall(r'href="([^"]+)"', nav) == ["/", "/point", "/dataset"]
+    assert re.findall(r'href="([^"]+)"', nav) == ["/", "/point", "/basin", "/dataset"]
     assert '<a href="/point" aria-current="page">' in nav
 
 

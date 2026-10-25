@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% set result = analysis.result %}
+{% macro plural(n, word) %}{{ n }} {{ word }}{{ "s" if n != 1 }}{% endmacro %}
+{% block title %}Basin result · pisco-rain-extractor{% endblock %}
+{% block content %}
+<h1>Basin analysis</h1>
+<p>{{ result.basin.filename }}, {{ result.period_start }} to {{ result.period_end }}.
+  <a class="back-link" href="/basin">New request</a></p>
+
+{% if result.fallback %}<div class="warning" role="alert">{{ fallback_warning }}</div>{% endif %}
+
+<nav class="downloads" aria-label="Downloads">
+  <h2>Downloads</h2>
+  <ul>
+    <li><a href="{{ base }}/export/daily.csv" download>Daily CSV</a></li>
+    <li><a href="{{ base }}/export/annual.csv" download>Annual CSV</a></li>
+    <li><a href="{{ base }}/export/climatology.csv" download>Climatology CSV</a></li>
+    <li><a href="{{ base }}/export/cells.csv" download>Cells CSV</a></li>
+    <li><a href="{{ base }}/export.xlsx" download>Excel workbook (.xlsx)</a></li>
+  </ul>
+  <p class="note">CSV files are for R and Python. To open the data in Excel, use the .xlsx workbook: with Spanish regional settings, Excel does not split the columns of a comma-separated file.</p>
+  <p class="note">This result is kept on the server for {{ retention_hours }} hours after the upload.</p>
+</nav>
+
+<div class="result" id="result">
+  <nav class="tabs" aria-label="Result">
+    <a href="#summary">Summary</a>
+    <a href="#daily">Daily</a>
+    <a href="#annual">Annual</a>
+    <a href="#climatology">Climatology</a>
+    <a href="#cells">Cells</a>
+  </nav>
+
+  <div class="tab-panels">
+    <section class="tab" id="summary">
+      <h2>Summary</h2>
+      {% if result.basin.features > 1 %}<p class="note">{{ result.basin.features }} features were dissolved into one basin</p>{% endif %}
+      <dl>
+        <dt>Basin file</dt><dd>{{ result.basin.filename }}</dd>
+        <dt>Basin area</dt><dd>{{ "%.1f"|format(result.area_km2) }} km²</dd>
+        <dt>Cells used</dt><dd>{{ plural(result.cells_used, "cell") }} used</dd>
+        <dt>Cells excluded</dt><dd>{{ plural(result.cells_excluded, "cell") }} excluded (no data)</dd>
+        <dt>Period</dt><dd>{{ result.period_start }} to {{ result.period_end }}</dd>
+        <dt>Total days</dt><dd>{{ result.total_days }}</dd>
+        <dt>Missing days</dt><dd>{{ result.missing_days }}</dd>
+        <dt>Mean annual rainfall</dt>
+        <dd>{% if analysis.mean_annual.mean_mm is none %}Not available (no complete year){% else %}{{ "%.1f"|format(analysis.mean_annual.mean_mm) }} mm from {{ plural(analysis.mean_annual.complete_years, "complete year") }}{% endif %}</dd>
+      </dl>
+      <p class="note">Each day is the mean of the selected cells with a value that day; a day is
+        missing only when no cell has a value. A year or month is complete with at least 95% valid
+        days; only complete years enter the mean.</p>
+    </section>
+
+{% with chart_src=base ~ "/chart/", chart_query="", page_url=base ~ "?page=", subject="basin", daily_alt="Daily areal mean precipitation of the basin" %}
+{% include "_analysis_tabs.html" %}
+{% endwith %}
+
+    <section class="tab" id="cells">
+      <h2>Cells</h2>
+      <img class="chart" src="{{ base }}/chart/cells.png" alt="Basin outline with the selected grid cells" loading="lazy">
+      <table>
+        <thead><tr><th scope="col">Longitude</th><th scope="col">Latitude</th><th scope="col">Status</th></tr></thead>
+        <tbody>
+          {% for cell in result.cells %}
+          <tr{% if not cell.used %} class="incomplete"{% endif %}><td>{{ cell.lon }}</td><td>{{ cell.lat }}</td><td>{{ "Used" if cell.used else "Excluded (no data)" }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="note">Cell centers inside the basin (boundary included), 0.1° cells.</p>
+    </section>
+  </div>
+</div>
+{% endblock %}
