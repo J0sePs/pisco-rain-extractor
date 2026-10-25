@@ -27,10 +27,12 @@ LON_START_CLIM = -81.45
 STEP = 0.1
 
 
-def make_coords(n: int, start: float, step: float, ascending: bool = True) -> np.ndarray:
-    """Return float32 coordinates `start, start+step, ...` (or descending with `-step`)."""
+def make_coords(
+    n: int, start: float, step: float, ascending: bool = True, dtype: type = np.float32
+) -> np.ndarray:
+    """Return coordinates `start, start+step, ...` (or descending with `-step`)."""
     values = start + (step if ascending else -step) * np.arange(n)
-    return np.round(values, 6).astype(np.float32)
+    return np.round(values, 6).astype(dtype)
 
 
 def write_pisco_file(
@@ -49,16 +51,27 @@ def write_pisco_file(
     include_precipitation: bool = True,
     time_units: str = "unknown",
     time_start_value: int = 1,
+    lat_start: float = LAT_START,
+    values: Callable[[tuple[int, int, int]], np.ndarray] | np.ndarray | None = None,
+    coord_dtype: type = np.float32,
 ) -> Path:
     """Write a small NetCDF file with the PISCOp v3.0 layout and return its path.
 
     By default the time axis is an integer index 1..N with `units: unknown`, as in the real
     files. Pass CF units (e.g. "days since 1981-01-01") to build a file with real dates.
+    `values` fills the precipitation grid (time, lat, lon) in descending-latitude order; it is
+    an array or a callable receiving the shape. Default: zeros.
     """
-    lat = make_coords(n_lat, LAT_START, STEP, ascending=False)
+    lat = make_coords(n_lat, lat_start, STEP, ascending=False, dtype=coord_dtype)
+    lon = make_coords(n_lon, lon_start, STEP, dtype=coord_dtype)
+    shape = (n_time, n_lat, n_lon)
+    if values is None:
+        grid = np.zeros(shape, dtype=np.float32)
+    else:
+        grid = np.asarray(values(shape) if callable(values) else values, dtype=np.float32)
     if ascending_lat:
         lat = lat[::-1].copy()
-    lon = make_coords(n_lon, lon_start, STEP)
+        grid = grid[:, ::-1, :].copy()  # keep each value on its own coordinate
     coords = {
         time_name: (
             time_name,
@@ -73,8 +86,7 @@ def write_pisco_file(
         attrs = {"grid_mapping": "crs"}
         if units is not None:
             attrs["units"] = units
-        values = np.zeros((n_time, n_lat, n_lon), dtype=np.float32)
-        data_vars[variable] = ((time_name, lat_name, lon_name), values, attrs)
+        data_vars[variable] = ((time_name, lat_name, lon_name), grid, attrs)
     ds = xr.Dataset(data_vars=data_vars, coords=coords)
     ds.to_netcdf(path, engine="netcdf4")
     ds.close()
@@ -104,6 +116,54 @@ def write_default_files(
             lon_start=LON_START_CLIM,
         )
     return directory
+
+
+# Reference grid around the PREC-TJGO point (-76.1390222, -12.2935861): centers at latitude
+# -12.05 .. -12.45 (descending) and longitude -76.35 .. -76.05, so (-76.15, -12.25) is a center
+# and latitude -12.30 / longitude -76.10 are exact ties between two centers (ADR-0011).
+REF_LAT_START = -12.05
+REF_LON_START = -76.35
+REF_CELL = (2, 2)  # (lat index, lon index) of center (-76.15, -12.25)
+REF_MISSING_DAYS = (2, 151)  # 1981-01-03 and 1981-06-01
+NAN_CELL = (4, 0)  # center (-76.35, -12.45): every value missing, like an ocean cell
+
+
+def reference_values(shape: tuple[int, int, int]) -> np.ndarray:
+    """Deterministic rainfall: (day % 7) * 1.5 mm, with the missing values described above."""
+    n_time, n_lat, n_lon = shape
+    daily = (np.arange(n_time) % 7) * 1.5
+    grid = np.broadcast_to(daily[:, None, None], shape).astype(np.float32).copy()
+    missing = [day for day in REF_MISSING_DAYS if day < n_time]  # short files keep fewer
+    grid[missing, REF_CELL[0], REF_CELL[1]] = np.nan
+    grid[:, NAN_CELL[0], NAN_CELL[1]] = np.nan
+    return grid
+
+
+def write_reference_dir(directory: Path, coord_dtype: type = np.float32, **kwargs: object) -> Path:
+    """Write a daily-only data directory on the reference grid."""
+    directory.mkdir(parents=True, exist_ok=True)
+    write_pisco_file(
+        directory / "PISCOp_d.nc",
+        kwargs.pop("daily_steps", DAILY_STEPS),  # type: ignore[arg-type]
+        lat_start=REF_LAT_START,
+        lon_start=REF_LON_START,
+        values=reference_values,
+        coord_dtype=coord_dtype,
+        **kwargs,  # type: ignore[arg-type]
+    )
+    return directory
+
+
+@pytest.fixture(scope="session")
+def reference_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Daily file on the reference grid with float32 coordinates (shared, read-only)."""
+    return write_reference_dir(tmp_path_factory.mktemp("reference"))
+
+
+@pytest.fixture(scope="session")
+def reference_dir_float64(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Same as `reference_dir` with float64 coordinates, as in the real files."""
+    return write_reference_dir(tmp_path_factory.mktemp("reference64"), coord_dtype=np.float64)
 
 
 @pytest.fixture(scope="session")
