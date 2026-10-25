@@ -16,3 +16,8 @@ numbers are never reused; this index is updated in the same commit as the ADR.
 | ADR | Title | Status | Date |
 |---|---|---|---|
 | [0001](0001-record-architecture-decisions.md) | Record architecture decisions | Accepted | 2026-10-24 |
+| [0002](0002-use-fastapi-with-server-rendered-jinja2-templates.md) | Use FastAPI with server-rendered Jinja2 templates | Accepted | 2026-10-24 |
+| [0003](0003-use-uv-as-the-python-package-manager.md) | Use uv as the Python package manager | Accepted | 2026-10-24 |
+| [0004](0004-adopt-a-layered-architecture-with-a-netcdf-repository.md) | Adopt a layered architecture with a NetCDF repository | Accepted | 2026-10-24 |
+| [0005](0005-read-netcdf-files-lazily-with-xarray.md) | Read NetCDF files lazily with xarray | Accepted | 2026-10-24 |
+| [0006](0006-use-the-nearest-grid-cell-for-point-extraction.md) | Use the nearest grid cell for point extraction | Accepted | 2026-10-24 |
