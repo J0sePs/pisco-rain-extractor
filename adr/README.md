@@ -26,3 +26,5 @@ numbers are never reused; this index is updated in the same commit as the ADR.
 | [0009](0009-use-httpx2-for-the-fastapi-test-client.md) | Use httpx2 for the FastAPI test client | Accepted | 2026-10-24 |
 | [0010](0010-select-latitude-ranges-through-an-order-aware-helper-with-float-tolerance.md) | Select latitude ranges through an order-aware helper with float tolerance | Accepted | 2026-10-24 |
 | [0011](0011-define-the-point-validity-domain-as-the-grid-cell-edges.md) | Define the point validity domain as the grid cell edges | Accepted | 2026-10-25 |
+| [0012](0012-use-a-95-percent-valid-day-threshold-for-complete-years-and-months.md) | Use a 95% valid-day threshold for complete years and months | Accepted | 2026-10-25 |
+| [0013](0013-serve-point-results-and-charts-from-stateless-get-urls-that-re-read-the-cell.md) | Serve point results and charts from stateless GET URLs that re-read the cell | Accepted | 2026-10-25 |
