@@ -29,3 +29,7 @@ numbers are never reused; this index is updated in the same commit as the ADR.
 | [0012](0012-use-a-95-percent-valid-day-threshold-for-complete-years-and-months.md) | Use a 95% valid-day threshold for complete years and months | Accepted | 2026-10-25 |
 | [0013](0013-serve-point-results-and-charts-from-stateless-get-urls-that-re-read-the-cell.md) | Serve point results and charts from stateless GET URLs that re-read the cell | Accepted | 2026-10-25 |
 | [0014](0014-define-the-tabular-export-format-for-csv-and-xlsx.md) | Define the tabular export format for CSV and XLSX | Accepted | 2026-10-25 |
+| [0015](0015-store-basin-results-server-side-under-a-random-id-with-a-24-hour-expiry.md) | Store basin results server-side under a random id with a 24-hour expiry | Superseded by [ADR-0018](0018-store-basin-results-server-side-under-a-uuid-validated-id-with-a-24-hour-expiry.md) | 2026-10-25 |
+| [0016](0016-compute-the-basin-areal-mean-as-the-arithmetic-mean-of-valid-cells-whose-centers-fall-inside.md) | Compute the basin areal mean as the arithmetic mean of valid cells whose centers fall inside | Accepted | 2026-10-25 |
+| [0017](0017-read-basin-bounding-boxes-in-time-blocks-with-a-2500-cell-limit.md) | Read basin bounding boxes in time blocks with a 2500-cell limit | Accepted | 2026-10-25 |
+| [0018](0018-store-basin-results-server-side-under-a-uuid-validated-id-with-a-24-hour-expiry.md) | Store basin results server-side under a UUID-validated id with a 24-hour expiry | Accepted | 2026-10-25 |
