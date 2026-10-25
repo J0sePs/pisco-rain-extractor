@@ -8,9 +8,9 @@ mean) and ADR-0017 (blocked bounding-box reads). Before starting, commit the pla
 
 ## 1. Setup: settings, ignore rules and backlog
 
-- [ ] 1.1 Add `uploads/` under the "App outputs" block of `.gitignore` (do not touch the `data/` rules); `uploads/` is not ignored before this task (checked during planning: `git check-ignore` exit 1) — verify: `git check-ignore -v uploads/basins/3f2b8c1e9d4a4b7c8e6f1a2b3c4d5e6f.json` exits 0 and names the `uploads/` line of `.gitignore`; `git check-ignore -q data/README.md` still exits 1; `git diff .gitignore` shows only the added line
-- [ ] 1.2 Add `basin_store_dir: Path = Path("uploads/basins")` and `basin_ttl_hours: int = 24` to `Settings` in `app/config.py`, with a test in `tests/test_config.py` for the defaults and for `BASIN_STORE_DIR` / `BASIN_TTL_HOURS` overrides — verify: `uv run pytest tests/test_config.py -q` passes
-- [ ] 1.3 Add a "Basin analysis" item to `BACKLOG.md`: area-weighted areal mean (cell fraction inside the basin), superseding ADR-0016 — verify: `grep -n "area-weighted" BACKLOG.md` prints the line
+- [x] 1.1 Add `uploads/` under the "App outputs" block of `.gitignore` (do not touch the `data/` rules); `uploads/` is not ignored before this task (checked during planning: `git check-ignore` exit 1) — verify: `git check-ignore -v uploads/basins/3f2b8c1e9d4a4b7c8e6f1a2b3c4d5e6f.json` exits 0 and names the `uploads/` line of `.gitignore`; `git check-ignore -q data/README.md` still exits 1; `git diff .gitignore` shows only the added line
+- [x] 1.2 Add `basin_store_dir: Path = Path("uploads/basins")` and `basin_ttl_hours: int = 24` to `Settings` in `app/config.py`, with a test in `tests/test_config.py` for the defaults and for `BASIN_STORE_DIR` / `BASIN_TTL_HOURS` overrides — verify: `uv run pytest tests/test_config.py -q` passes
+- [x] 1.3 Add a "Basin analysis" item to `BACKLOG.md`: area-weighted areal mean (cell fraction inside the basin), superseding ADR-0016 — verify: `grep -n "area-weighted" BACKLOG.md` prints the line
 
 ## 2. Repository: bounding boxes and blocked reads
 

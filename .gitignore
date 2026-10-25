@@ -16,6 +16,7 @@ venv/
 
 # --- App outputs ---
 outputs/
+uploads/
 
 # --- OS ---
 Thumbs.db

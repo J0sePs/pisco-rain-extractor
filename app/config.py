@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     data_dir: Path = Path("data")
     daily_start_date: date = date(1981, 1, 1)
     monthly_start_date: date = date(1981, 1, 1)
+    basin_store_dir: Path = Path("uploads/basins")
+    basin_ttl_hours: int = 24
 
 
 @lru_cache

@@ -17,6 +17,10 @@ Pending improvements and ideas, not yet planned. Each item becomes an OpenSpec c
 - Move the `precipitation_reads` spy fixture to `tests/conftest.py` (duplicated in
   `tests/test_point_result_pages.py` and `tests/test_export_pages.py`).
 
+## Basin analysis
+- Area-weighted areal mean (cell fraction inside the basin, optionally cos(latitude)); requires
+  superseding ADR-0016.
+
 ## Analysis ideas
 - Mann-Kendall trend test and Sen's slope on annual maxima.
 - Gumbel/GEV return periods from annual maxima.
