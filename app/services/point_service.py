@@ -94,8 +94,7 @@ def validate_point(repo: PiscoRepository, form: PointForm) -> PointQuery:
     end_year = _integer(form.end_year, "End year")
 
     extent = repo.grid_extent()
-    years = _data_years(repo)
-    if extent is None or years is None:
+    if extent is None or _data_years(repo) is None:
         raise PointInputError("Daily data is not available")
     if not extent.contains(lon, lat):
         raise PointInputError(
@@ -103,12 +102,16 @@ def validate_point(repo: PiscoRepository, form: PointForm) -> PointQuery:
             f"(longitude {extent.lon_min:.1f} to {extent.lon_max:.1f}, "
             f"latitude {extent.lat_min:.1f} to {extent.lat_max:.1f})"
         )
-    if start_year > end_year:
-        raise PointInputError("Start year must not be later than end year")
-    first, last = years
-    if start_year < first or end_year > last:
-        raise PointInputError(f"Years must be between {first} and {last}")
+    _check_years(repo, start_year, end_year)
     return PointQuery(lon=lon, lat=lat, start_year=start_year, end_year=end_year)
+
+
+def validate_years(repo: PiscoRepository, start_text: str, end_text: str) -> tuple[int, int]:
+    """Validate a year range with the messages of the point form; no precipitation is read."""
+    start_year = _integer(start_text, "Start year")
+    end_year = _integer(end_text, "End year")
+    _check_years(repo, start_year, end_year)
+    return start_year, end_year
 
 
 def extract_point(repo: PiscoRepository, query: PointQuery) -> PointResult:
@@ -146,6 +149,17 @@ def result_query(form: PointForm) -> str:
             "end_year": form.end_year.strip(),
         }
     )
+
+
+def _check_years(repo: PiscoRepository, start_year: int, end_year: int) -> None:
+    years = _data_years(repo)
+    if years is None:
+        raise PointInputError("Daily data is not available")
+    if start_year > end_year:
+        raise PointInputError("Start year must not be later than end year")
+    first, last = years
+    if start_year < first or end_year > last:
+        raise PointInputError(f"Years must be between {first} and {last}")
 
 
 def _data_years(repo: PiscoRepository) -> tuple[int, int] | None:
