@@ -225,3 +225,56 @@ def test_invalid_chart_query(ref_client: TestClient) -> None:
 
 def test_chart_of_cell_without_data(ref_client: TestClient) -> None:
     assert ref_client.get(f"/point/chart/daily.png?{OCEAN}").status_code == 404
+
+
+# --- placeholders for missing statistics ----------------------------------------------------
+
+
+@pytest.fixture
+def gappy_client(make_client: Callable[[Path], TestClient], tmp_path: Path) -> TestClient:
+    """Reference grid for 1981-1983 where the reference cell misses all of 1982 and 2 days
+    of February 1981, so 1982 has no data and no February is complete."""
+    from tests.conftest import (
+        REF_CELL,
+        REF_LAT_START,
+        REF_LON_START,
+        reference_values,
+        write_pisco_file,
+    )
+
+    def values(shape: tuple[int, int, int]) -> np.ndarray:
+        grid = reference_values(shape)
+        lat, lon = REF_CELL
+        grid[365:730, lat, lon] = np.nan  # 1982
+        grid[31:33, lat, lon] = np.nan  # 1981-02-01 and 1981-02-02
+        return grid
+
+    directory = tmp_path / "gappy"
+    directory.mkdir()
+    write_pisco_file(
+        directory / "PISCOp_d.nc",
+        1095,  # 1981-01-01 .. 1983-12-31
+        lat_start=REF_LAT_START,
+        lon_start=REF_LON_START,
+        values=values,
+    )
+    return make_client(directory)
+
+
+def test_year_with_every_day_missing_shown(gappy_client: TestClient) -> None:
+    html = gappy_client.get("/point/result?lon=-76.15&lat=-12.25&start_year=1981&end_year=1982")
+    annual = _section(html.text, "annual")
+    assert _row(annual, "1982") == ["missing", "missing", "0", "Incomplete"]
+    assert 'class="incomplete"><td>1982</td>' in annual
+
+
+def test_month_without_valid_data_shown(gappy_client: TestClient) -> None:
+    html = gappy_client.get("/point/result?lon=-76.15&lat=-12.25&start_year=1981&end_year=1982")
+    assert _row(_section(html.text, "climatology"), "Feb") == ["–", "–", "0"]
+
+
+def test_single_year_climatology_shown(ref_client: TestClient) -> None:
+    html = ref_client.get("/point/result?lon=-76.15&lat=-12.25&start_year=2000&end_year=2000")
+    january = _row(_section(html.text, "climatology"), "Jan")
+    assert january[1:] == ["–", "1"]
+    assert january[0] != "–"
