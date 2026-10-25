@@ -1,0 +1,94 @@
+schema: spec-driven
+
+# ============================================================================
+# 1. PROJECT CONTEXT (constraints, not documentation)
+# ============================================================================
+context: |
+  Project: pisco-rain-extractor - web app to extract and analyze daily rainfall
+  from the SENAMHI PISCOp v3.0 gridded dataset (0.1 deg, 1981-2025, Peru),
+  for environmental engineering students and practitioners.
+  Type: server-rendered web application (no database, no SPA).
+
+  Language:
+  - Reply to the user in Spanish.
+  - Write every file, folder, identifier, code comment, docstring, OpenSpec
+    artifact, ADR and commit message in English.
+
+  Stack (fixed; changing it requires an ADR):
+  - Python 3.12, managed with uv (pyproject.toml + uv.lock). Add dependencies
+    only with "uv add"; never use pip directly.
+  - Web: FastAPI + Uvicorn, Jinja2 server-rendered templates, plain CSS in
+    app/static/. No JS framework and no CDN; vanilla JS only if a spec requires it.
+  - Forms: HTML forms posted to FastAPI (python-multipart).
+  - Data: xarray + netCDF4, pandas, numpy.
+  - Geo: pyproj (UTM to WGS84), geopandas + shapely (basin polygons).
+  - Charts: matplotlib with the Agg backend, served as PNG.
+  - Exports: CSV (pandas) and XLSX (openpyxl).
+  - Settings: pydantic-settings with environment variables (DATA_DIR defaults to data/).
+  - Quality: pytest + httpx (FastAPI TestClient), ruff (lint + format).
+
+  Architecture: Layered.
+  - routes (app/routes/): parse form input, call services, render templates; no business logic.
+  - services (app/services/): extraction, analysis, coordinates, charts, exports; no FastAPI imports.
+  - repositories (app/repositories/): the only place that opens or reads NetCDF files.
+  - Dependencies: routes -> services -> repositories (never the other way around).
+  Decisions in ./adr/ with status Accepted take precedence over this text.
+
+  Data constraints:
+  - Files in data/ are third-party property (SENAMHI): gitignored, never committed,
+    copied into tests/ or redistributed.
+  - Open NetCDF files lazily once at startup (FastAPI lifespan); never load the full
+    daily grid into memory. Point extraction reads a single grid cell.
+  - Detect variable and coordinate names from the files; do not hardcode them.
+  - Coordinates in WGS84. Peru spans UTM zones 17, 18 and 19, southern hemisphere
+    (EPSG 32717, 32718, 32719).
+  - Precipitation in mm; dates in ISO 8601 (YYYY-MM-DD).
+  - Tests use small synthetic NetCDF fixtures built in tests/conftest.py.
+
+# ============================================================================
+# 2. PER-ARTIFACT RULES (added on top of the official OpenSpec guidance)
+# ============================================================================
+rules:
+  proposal:
+    - 'If the request is ambiguous about scope, observable behavior or acceptance criteria, use the grill-me skill before writing.'   # [03]
+    - 'In "What Changes", include an "Out of scope" subsection.'
+    - 'List decisions that deserve an ADR under a "Decisions" heading.'
+    - 'Keep it under about 400 words. Name capabilities in kebab-case by domain (point-extraction, rainfall-analysis, data-export).'
+
+  specs:
+    - 'One requirement = one behavior, written with SHALL or MUST.'
+    - 'Scenarios use "#### Scenario:" (exactly 4 #) and bullets "- **GIVEN**", "- **WHEN**", "- **THEN**", "- **AND**". Never use Gherkin blocks.'
+    - 'Every requirement has at least one success scenario and one error or edge-case scenario.'
+    - 'Use concrete values in scenarios (coordinates, years, mm) so each scenario can become a test.'
+    - 'Under MODIFIED, copy the full requirement with all of its scenarios.'
+
+  design:
+    - 'Before designing, read the ADRs with status Accepted in ./adr/ and follow them; if the design contradicts one, stop and propose /adr-supersede.'   # [03]
+    - 'If the change crosses layers or is the first change of the project, use the c4-diagrams skill.'   # [03]
+    - 'Define contracts - routes (method, path, form fields, template, status codes) and service function signatures with type hints.'
+    - 'State the memory strategy for every NetCDF read.'
+    - 'Every decision lists the rejected alternative. If it affects future changes, mark it "Requires ADR" and suggest /adr.'
+
+  tasks:
+    - 'Order groups by layer (repositories, services, routes, templates); each group includes its own tests.'
+    - 'Each task touches at most 1 or 2 files and ends with "— verify:" followed by a command or an observable result.'
+    - 'Verification commands use uv run (uv run pytest, uv run ruff check .).'
+    - 'Every new dependency gets an explicit task with the exact uv add command.'
+    - 'The last group is "Integration verification" and includes a manual check in the browser.'
+
+# ============================================================================
+# 3. OPERATION GUIDANCE (advisory)
+# ============================================================================
+operations:
+  apply:
+    guidance:
+      - 'At the start, apply the git-discipline skill (clean tree and committed plan).'   # [03]
+      - 'Run uv run pytest for the group before marking its tasks [x]; never move on with failing tests.'
+      - 'Never load the full daily NetCDF into memory, not even in tests or scripts.'
+      - 'If a task needs something outside design.md or an accepted ADR, pause and suggest /opsx:update or /adr.'
+      - 'After each task group, explain briefly in Spanish what was done and why.'
+  archive:
+    guidance:
+      - 'Confirm that uv run pytest and uv run ruff check . pass and that /opsx:verify reported no CRITICAL issues.'
+      - 'If a structural decision was made during the change without an ADR, point it out before closing.'
+

@@ -1,0 +1,22 @@
+# --- Third-party data (SENAMHI PISCOp): not ours, NEVER commit ---
+data/*
+!data/.gitkeep
+!data/README.md
+*.nc
+*.nc4
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.env
+
+# --- App outputs ---
+outputs/
+
+# --- OS ---
+Thumbs.db
+.DS_Store
