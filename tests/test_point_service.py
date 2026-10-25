@@ -120,6 +120,18 @@ def test_tie_point_goes_north(repo: PiscoRepository) -> None:
     assert result.distance_km == 5.560
 
 
+def test_tie_point_goes_east(repo: PiscoRepository) -> None:
+    result = extract_point(repo, _form(lon="-76.10", lat="-12.25"))
+    assert (result.cell.lon, result.cell.lat) == (-76.05, -12.25)
+    assert result.distance_km == 5.433
+
+
+def test_exact_center_has_zero_distance(repo: PiscoRepository) -> None:
+    result = extract_point(repo, _form(lon="-76.25", lat="-12.15"))
+    assert (result.cell.lon, result.cell.lat) == (-76.25, -12.15)
+    assert result.distance_km == 0.0
+
+
 def test_all_missing_cell_raises_no_data(repo: PiscoRepository) -> None:
     with pytest.raises(NoDataError) as error:
         extract_point(repo, _form(lon="-76.35", lat="-12.45"))
