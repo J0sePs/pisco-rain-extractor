@@ -74,8 +74,10 @@ values (`null` for missing), about 0.3 MB for 45 years.
 - Ids are validated by `is_result_id(text) -> bool`: the value must match
   `^[0-9a-f]{12}4[0-9a-f]{3}[89ab][0-9a-f]{15}$` and round-trip through `uuid.UUID(text).hex`.
   The routes call it before using the store, and `BasinStore.load` calls it again before it
-  builds a `Path`. A rejected value never reaches the file system (no stat, open, list or
-  delete), so a path traversal such as `../../pyproject.toml` cannot name any file.
+  builds a `Path`. A rejected value causes no file-system call (stat, open, list or delete)
+  on the store or on any path derived from it, so a path traversal such as
+  `../../pyproject.toml` cannot name any file. Unrelated I/O, such as Jinja checking its own
+  templates (auto-reload stays on), is outside this rule.
 - An unknown, expired or invalid id gets the same 404 `basin.html` page with "This result has
   expired; upload the basin again" and a link to `/basin`. One message for all three cases
   means probing ids reveals nothing. Chart and download URLs return a plain 404.
@@ -333,7 +335,7 @@ class BasinResult:
     total_days: int; missing_days: int
     series: pd.Series                             # DatetimeIndex "date", float mm, NaN = missing
 
-def check_basin_extent(repo: PiscoRepository, basin: BasinGeometry) -> None: ...
+def check_basin_extent(repo: PiscoRepository, basin: BasinGeometry) -> GridExtent: ...  # reused by extract_basin
 def extract_basin(
     repo: PiscoRepository, basin: BasinGeometry, start_year: int, end_year: int
 ) -> BasinResult: ...

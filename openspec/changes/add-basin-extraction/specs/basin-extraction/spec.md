@@ -282,13 +282,14 @@ SHALL show the result without reading precipitation.
 ### Requirement: Result id validation
 Every basin result, chart and download URL SHALL accept the id only when it is the 32-character
 lowercase hexadecimal form of a version-4 UUID, checked before any file path is built. Any other
-value SHALL return 404 without any file-system access.
+value SHALL return 404 with no file-system call on the result store or on any path derived from the id. Unrelated I/O, such as the
+template engine checking its own template files, is outside this rule.
 
 #### Scenario: Path traversal attempt
 - **WHEN** a user opens `/basin/result/..%2F..%2Fpyproject.toml`, or the result store is asked
   to load the id `../../pyproject.toml`
 - **THEN** the response is 404 (the load returns nothing)
-- **AND** no file-system call (stat, open, list or delete) is made
+- **AND** no file-system call (stat, open, list or delete) is made on the result store or on any path derived from the id
 
 #### Scenario: Malformed id
 - **WHEN** a user opens `/basin/result/<id>` with `<id>` equal to `not-a-uuid`, to
@@ -296,12 +297,12 @@ value SHALL return 404 without any file-system access.
   `3f2b8c1e-9d4a-4b7c-8e6f-1a2b3c4d5e6f` (hyphenated) or to
   `0123456789abcdef0123456789abcdef` (not version 4)
 - **THEN** the response is 404 with "This result has expired; upload the basin again"
-- **AND** no file-system call is made
+- **AND** no file-system call is made on the result store or on any path derived from the id
 
 #### Scenario: Malformed id on a chart or download
 - **WHEN** a user requests `/basin/result/not-a-uuid/chart/daily.png` or
   `/basin/result/not-a-uuid/export.xlsx`
-- **THEN** the response is 404 with no file and no file-system call
+- **THEN** the response is 404 with no file and no file-system call on the result store or on any path derived from the id
 
 ### Requirement: Expired or unknown result
 Opening the result page of a well-formed id that is unknown or expired SHALL return 404 with a
