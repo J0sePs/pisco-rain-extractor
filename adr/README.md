@@ -25,3 +25,4 @@ numbers are never reused; this index is updated in the same commit as the ADR.
 | [0008](0008-catalog-the-pisco-climatology-file-without-using-it-for-analysis.md) | Catalog the PISCOp climatology file without using it for analysis | Accepted | 2026-10-24 |
 | [0009](0009-use-httpx2-for-the-fastapi-test-client.md) | Use httpx2 for the FastAPI test client | Accepted | 2026-10-24 |
 | [0010](0010-select-latitude-ranges-through-an-order-aware-helper-with-float-tolerance.md) | Select latitude ranges through an order-aware helper with float tolerance | Accepted | 2026-10-24 |
+| [0011](0011-define-the-point-validity-domain-as-the-grid-cell-edges.md) | Define the point validity domain as the grid cell edges | Accepted | 2026-10-25 |
