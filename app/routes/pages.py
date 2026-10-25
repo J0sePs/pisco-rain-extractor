@@ -1,6 +1,7 @@
 """HTML pages: home and dataset catalog (no business logic here)."""
 
 from pathlib import Path
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
@@ -18,6 +19,9 @@ def get_repository(request: Request) -> PiscoRepository:
     return request.app.state.repository
 
 
+RepositoryDep = Annotated[PiscoRepository, Depends(get_repository)]
+
+
 @router.get("/", response_class=HTMLResponse)
 def home(request: Request) -> HTMLResponse:
     """Render the home page."""
@@ -25,10 +29,7 @@ def home(request: Request) -> HTMLResponse:
 
 
 @router.get("/dataset", response_class=HTMLResponse)
-def dataset(
-    request: Request,
-    repo: PiscoRepository = Depends(get_repository),  # noqa: B008
-) -> HTMLResponse:
+def dataset(request: Request, repo: RepositoryDep) -> HTMLResponse:
     """Render the catalog of the three PISCOp files."""
     context = {"active": "dataset", "summaries": list_dataset_summaries(repo)}
     return templates.TemplateResponse(request, "dataset.html", context)
