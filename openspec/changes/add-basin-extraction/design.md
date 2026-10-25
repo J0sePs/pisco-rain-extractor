@@ -176,31 +176,27 @@ neighbors**: synthetic values, contrary to ADR-0006.
 
 Recorded in ADR-0016 (together with the D3 selection rules and the basin file names of D6).
 
-### D5. Bounding-box reads in chunk-aligned tiles, no chunk cache, limit 2500 cells — [ADR-0019](../../../adr/0019-read-basin-bounding-boxes-in-chunk-aligned-tiles-with-no-chunk-cache-and-a-2500-cell-limit.md)
+### D5. Bounding-box reads in chunk-aligned tiles, limit 2500 cells — [ADR-0020](../../../adr/0020-read-basin-bounding-boxes-in-chunk-aligned-tiles-through-the-shared-xarray-handle.md)
 
 `iter_box_blocks` yields `(dates, values)` for consecutive time blocks of the requested period,
-aligned with the file's time chunks (`encoding["chunksizes"]`, 2740 days in the real file, or
-1461 days when the file is not chunked). Within a block, the repository reads one tile per
-spatial chunk the box touches and writes it into the block array (float32, time × lat × lon).
-The service reduces each block to its daily areal values and per-cell valid counts, then drops
-it.
+aligned with the time chunks of the daily variable (`encoding["chunksizes"]`, 2740 days in the
+real file, or 1461 days when the variable is not chunked). Within a block, the repository makes
+one xarray `isel` per spatial chunk the box touches and writes it into the block array (float32,
+time × lat × lon). A variable that is not chunked in space is read as a single tile. xarray
+decodes fill values and packing, as for point reads. The service reduces each block to its daily
+areal values and per-cell valid counts, then drops it.
 
-Read handle: at startup the repository opens the daily file a second time with netCDF4, only
-for box reads. Its precipitation variable has `set_var_chunk_cache(size=0)` and
-`set_auto_maskandscale(False)`. Values equal to `_FillValue` or `missing_value` become NaN (the
-real file uses -1.175494e+38). A variable with `scale_factor` or `add_offset` falls back to
-xarray reads. The xarray handle, with its default cache, still serves point reads and every
-coordinate lookup (`lat_slice`, `lon_slice`).
+Memory strategy (every NetCDF read): one block at a time, one chunk per read, and the single
+shared handle (ADR-0005). Its default HDF5 chunk cache keeps warm point reads fast (ADR-0013).
+Measured on the real file for a 50 × 50 box over 1981–2025, idle process at 111 MB, each run in
+a fresh process:
+- One `isel` per block (ADR-0017): 302 MB.
+- A second netCDF4 handle with no chunk cache (ADR-0019): 282 MB. HDF5 shares the dataset with
+  the open xarray handle, so that cache setting has no effect.
+- Chunk-aligned tiles through the xarray handle: **287 MB, 2.5 s**.
 
-Memory strategy (every NetCDF read): one block at a time, one decompressed chunk at a time, and
-no chunk cache on the box handle. These values were measured on the real file for a 50 × 50 box
-over 1981–2025, with the process at 111 MB when idle:
-- The first implementation, one xarray `isel` per block, peaked at 302 MB.
-- netCDF4 tiles with no cache read at +46 MB, 1.8 s.
-- The areal mean adds about 35 MB (a float32 selection copy and a float64 sum).
-
-The expected peak is therefore under 200 MB. The areal series itself is 16436 float64 values
-(130 KB). Point reads are unchanged.
+The remaining peak is the shared chunk cache (up to 64 MB), the 27 MB block and the areal-mean
+temporaries (about 33 MB). The areal series itself is 16436 float64 values (130 KB).
 
 The 2500 limit is on bounding-box cells, not on selected cells, because memory and time
 follow the box. 2500 cells is about 5° × 5° (roughly 300,000 km²), large enough for the
@@ -208,15 +204,14 @@ Mantaro or Urubamba basins.
 
 Rejected: **one read of the whole box** (164 MB at 50 × 50 for 45 years). Rejected: **dask**
 (ADR-0005 requires an ADR, and blocks give the same bound with numpy). Rejected: **one xarray
-`isel` per block** (ADR-0017, measured 302 MB). Rejected: **no chunk cache on the shared
-handle**, which would slow every warm point read from about 1 ms to about 0.15 s (ADR-0013).
-Rejected: **reaching the netCDF4 variable through xarray internals** (private API).
+`isel` per block** (ADR-0017, 302 MB). Rejected: **a second cache-less netCDF4 handle**
+(ADR-0019, about 5 MB saved for a second handle and a second fill-value decoding).
 
 `scripts/check_basin_memory.py` measures the peak working set (Windows
 `K32GetProcessMemoryInfo` through `ctypes`, `resource.getrusage` elsewhere; no new
 dependency) for a 50 × 50 box on the real file, so the limit rests on a measurement.
 
-Recorded in ADR-0019, which supersedes ADR-0017 after that measurement.
+Recorded in ADR-0020, which supersedes ADR-0019 (and, through it, ADR-0017).
 
 ### D6. Shared analysis, charts and exports through an analysis union
 
@@ -377,7 +372,7 @@ def analyze_basin(result: BasinResult) -> BasinAnalysis: ...
 - [Disk growth] → each result is about 0.3 MB and lives at most 24 h plus the time to the
   next save or restart.
 - [POST takes several seconds at the size limit] → measured by the D5 script; the limit can
-  only be changed by superseding ADR-0019.
+  only be changed by superseding ADR-0020.
 - [Centers-inside undercounts narrow basins] → the fallback guarantees at least one cell; the
   BACKLOG area-weighting option addresses accuracy.
 - [The UTM zone of a basin crossing zones] → the centroid shift is far below the 11 km cell;
