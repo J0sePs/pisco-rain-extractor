@@ -19,7 +19,8 @@ Building it first fixes the architecture before any business logic exists.
   latitude, longitude and time coordinate names.
 - The files store time as an integer index (`Z1`), not dates. The repository builds the
   calendar from a known start (1981-01-01, daily or monthly; climatology = 12 calendar
-  months) and checks that the length matches.
+  months) and checks that the length matches and that the daily and monthly files end in
+  the same month.
 - `GET /` renders a home page. `GET /dataset` shows, per file: variables, units, grid size,
   lat/lon bounds, resolution and time range.
 - A missing or unreadable file does not stop startup; `/dataset` shows a clear warning.
@@ -46,7 +47,7 @@ Building it first fixes the architecture before any business logic exists.
 ## Decisions
 
 - **Time axis reconstruction** (integer `Z1` index → ISO dates from a fixed start date per
-  file) affects every later change. **Requires ADR**.
+  file, start dates in settings) affects every later change: ADR-0007 (Accepted).
 - Layering, lazy reads and the web stack follow ADR-0002 to ADR-0005; no new ADR needed.
 
 ## Impact

@@ -4,7 +4,8 @@
 
 See `proposal.md` (Why) and the specs `dataset-catalog` and `web-shell` for behavior.
 This is the first change: there is no code yet. It follows the accepted ADRs:
-ADR-0002 (FastAPI + Jinja2), ADR-0003 (uv), ADR-0004 (layers), ADR-0005 (lazy xarray reads).
+ADR-0002 (FastAPI + Jinja2), ADR-0003 (uv), ADR-0004 (layers), ADR-0005 (lazy xarray reads),
+ADR-0007 (calendar from the time index).
 
 Facts observed in the real files (inspected lazily, metadata only):
 
@@ -82,7 +83,9 @@ the cost is a larger initial environment.
 Settings (`app/config.py`):
 ```python
 class Settings(BaseSettings):
-    data_dir: Path = Path("data")          # env DATA_DIR
+    data_dir: Path = Path("data")                    # env DATA_DIR
+    daily_start_date: date = date(1981, 1, 1)        # env DAILY_START_DATE (ADR-0007)
+    monthly_start_date: date = date(1981, 1, 1)      # env MONTHLY_START_DATE (ADR-0007)
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 def get_settings() -> Settings: ...        # lru_cache
 ```
@@ -106,10 +109,11 @@ class DatasetMetadata:
     lat_min: float | None; lat_max: float | None; lon_min: float | None; lon_max: float | None
     resolution_deg: float | None
     time_start: str | None; time_end: str | None    # ISO date, or "1"/"12" for climatology
+    warnings: list[str]                              # e.g. period mismatch (D7)
 
 class PiscoRepository:
     @classmethod
-    def open(cls, data_dir: Path) -> "PiscoRepository": ...   # never raises for bad files
+    def open(cls, settings: Settings) -> "PiscoRepository": ...   # never raises for bad files
     def metadata(self, kind: DatasetKind) -> DatasetMetadata: ...
     def all_metadata(self) -> list[DatasetMetadata]: ...      # order: daily, monthly, clim
     def dataset(self, kind: DatasetKind) -> xr.Dataset | None: ...  # lazy handle, for later changes
@@ -117,13 +121,16 @@ class PiscoRepository:
     def close(self) -> None: ...
 ```
 Helper functions (module level, pure, unit-tested): `detect_names(ds) -> DetectedNames`
-and `build_time_index(kind, n) -> pd.Index`.
+`build_time_index(kind: DatasetKind, n: int, start: date | None) -> pd.Index` and
+`check_period_consistency(daily: pd.Index, monthly: pd.Index) -> str | None`.
+The repository receives the start dates from `Settings`; it never defines them itself.
 
 Service (`app/services/dataset_service.py`):
 ```python
 @dataclass(frozen=True)
 class DatasetSummary:
-    filename: str; kind: str; available: bool; warning: str | None
+    filename: str; kind: str; available: bool
+    warnings: list[str]                # unavailability reason and/or period mismatch
     variables: list[tuple[str, str]]   # (name, units or "not specified")
     grid: str | None                   # "210 x 174"
     lat_range: str | None; lon_range: str | None; resolution: str | None   # "0.1°"
@@ -143,7 +150,7 @@ No form fields in this change. The repository is read from `request.app.state.re
 through a dependency `get_repository(request: Request) -> PiscoRepository`.
 
 App (`app/main.py`): `create_app(settings: Settings | None = None) -> FastAPI`; the lifespan
-calls `PiscoRepository.open(settings.data_dir)`, stores it in `app.state.repository`, and
+calls `PiscoRepository.open(settings)`, stores it in `app.state.repository`, and
 calls `close()` on shutdown. Module-level `app = create_app()`.
 
 ### D3. Name detection
@@ -159,15 +166,22 @@ calls `close()` on shutdown. Module-level `app = create_app()`.
 Rejected: hardcoding `precipitation`/`Z1` – the climatology already uses `PISCOp_clim2`, and
 the config forbids fixed names.
 
-### D4. Calendar from the integer index – **Requires ADR** (ADR-0007, Proposed)
-Daily: `pd.date_range("1981-01-01", periods=n, freq="D")`; monthly:
-`pd.date_range("1981-01-01", periods=n, freq="MS")`; climatology: `pd.RangeIndex(1, 13)`
-named `month`, and n must be 12. If the time coordinate already decodes to datetimes
-(a future dataset version), those dates are used instead. The start date is a module
-constant tied to PISCOp v3.0. Dates are kept as a separate index in the repository, not
-assigned into the dataset, so the handle stays untouched.
+### D4. Calendar from the integer index – ADR-0007 (Accepted)
+Daily: `pd.date_range(settings.daily_start_date, periods=n, freq="D")` (Gregorian, leap
+years included); monthly: `pd.date_range(settings.monthly_start_date, periods=n, freq="MS")`;
+climatology: `pd.RangeIndex(1, 13)` named `month`, and n must be 12. If the time coordinate
+already decodes to datetimes (a future dataset version), those dates are used instead.
+The start dates live **only** in `app/config.py` (`Settings`, defaults 1981-01-01) and reach
+the repository through `PiscoRepository.open(settings)`; no other module hardcodes a date.
+Dates are kept as a separate index in the repository, not assigned into the dataset.
+Evidence (see ADR-0007): `data/readme.txt` declares only "from 1981 to 2025", not a start
+date; 16436 steps equal 1981-01-01..2025-12-31 only with leap years (365-day years would
+give 16425).
 Rejected: reading dates from `Z1` attributes – there are none (`units: unknown`).
 Rejected: asking the user for the start date – error-prone and not a user concern.
+Rejected: a module constant in the repository – the start dates must be defined in one
+settings place and be testable/overridable without code changes.
+Rejected: `noleap`/360-day calendars – they do not match the observed step count.
 
 ### D5. Memory strategy
 - `xr.open_dataset(path, engine="netcdf4", decode_times=False, cache=False)` – lazy; no
@@ -184,16 +198,29 @@ Rejected: `chunks={}`/dask – adds a dependency with no benefit for single-cell
 `"file not found: <name>"`; `OSError`/`ValueError` while opening → `"could not be read as NetCDF"`;
 detection or calendar failures → their own reason. The app always starts.
 
-### D7. Templates and CSS
+### D7. Daily/monthly cross-validation (ADR-0007)
+After both files are opened, `check_period_consistency` compares
+`daily_index[-1].to_period("M")` with `monthly_index[-1].to_period("M")`. If they differ,
+the same message — `"Period mismatch: daily file ends in 2025-12, monthly file ends in
+2024-12"` — is appended to `warnings` of **both** metadata objects; `available` stays `True`
+and startup continues. If either file is unavailable, the check is skipped (no warning).
+Memory: uses only the already-built time indexes; no file access.
+Rejected: marking both files unavailable – too strict, the data is still readable and the
+user can judge. Rejected: comparing start months as well – both start dates come from the
+same settings, so the comparison would be circular; the end month is the independent signal.
+
+### D8. Templates and CSS
 `base.html` (header, `<nav>` with `aria-current="page"` on the active link, footer crediting
 SENAMHI with a plain `<a>` to the figshare page), `home.html`, `dataset.html` (one
-`<section>` per file; unavailable files show `<div class="warning" role="alert">` with the reason
-and a mention of `data/README.md`). One stylesheet `app/static/css/style.css`. No `<script>`.
+`<section>` per file; each entry of `warnings` is shown in a `<div class="warning" role="alert">`;
+unavailable files also mention `data/README.md`; available files with warnings still show
+their details). One stylesheet `app/static/css/style.css`. No `<script>`.
 
-### D8. Tests
+### D9. Tests
 `tests/conftest.py` builds synthetic NetCDF files with the PISCOp layout in `tmp_path`
 (5 lat x 4 lon, descending latitudes, `Z1` integer index; daily with 16436 steps ≈ 1.3 MB,
-monthly 540, climatology 12 with variable `PISCOp_clim2` and no units) and exposes:
+monthly 540 by default or a custom length such as 528 for the mismatch test, climatology 12
+with variable `PISCOp_clim2` and no units) and exposes:
 `data_dir` (all three files), a factory for custom/corrupt files, and `client`
 (`TestClient(create_app(Settings(data_dir=...)))` used as a context manager so the lifespan runs).
 ruff in `pyproject.toml`: `line-length = 100`, `target-version = "py312"`,
@@ -201,8 +228,11 @@ ruff in `pyproject.toml`: `line-length = 100`, `target-version = "py312"`,
 
 ## Risks / Trade-offs
 
-- [The 1981-01-01 start is an assumption about PISCOp v3.0] → It matches the exact day and
-  month counts and `readme.txt`; it is recorded in ADR-0007 and checked by length.
+- [The 1981-01-01 start is inferred; `readme.txt` gives only years] → It matches the exact
+  Gregorian day count (16436, not 16425) and the 540 months; the daily/monthly end-month
+  cross-check (D7) flags inconsistencies; recorded in ADR-0007.
+- [A shift applied equally to both files would not be detected by D7] → Accepted; it would
+  require a wrong start date in settings, which is a reviewed change.
 - [Climatology grid has 180 longitudes, daily has 174] → Metadata is per file; later changes
   must not assume the grids are identical.
 - [Descending latitude] → Bounds use min/max, never first/last.

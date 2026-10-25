@@ -70,14 +70,20 @@ latitude, longitude and time dimension names, instead of relying on fixed names.
 - **THEN** the dataset is marked unavailable with reason "no precipitation variable found"
 
 ### Requirement: Build calendar dates from the time index
-The system SHALL assign ISO 8601 dates to the integer time index: daily steps from
-1981-01-01, monthly steps from 1981-01 (first day of each month), and calendar months 1–12
-for the climatology. A length that does not fit the expected range SHALL be reported.
+The system SHALL assign ISO 8601 dates to the integer time index: one Gregorian day (with
+leap years) per daily step from the daily start date, one month (first day) per monthly step
+from the monthly start date, and calendar months 1–12 for the climatology. A length that does
+not fit the expected range SHALL be reported.
 
 #### Scenario: Full daily period
 - **GIVEN** a daily file with 16436 time steps
 - **WHEN** the file is opened
 - **THEN** the time range is 1981-01-01 to 2025-12-31
+
+#### Scenario: Leap days are counted
+- **GIVEN** a daily file with 16425 time steps (45 x 365, as in a no-leap calendar)
+- **WHEN** the file is opened
+- **THEN** the time range is 1981-01-01 to 2025-12-20, not 2025-12-31
 
 #### Scenario: Monthly period
 - **GIVEN** a monthly file with 540 time steps
@@ -93,6 +99,49 @@ for the climatology. A length that does not fit the expected range SHALL be repo
 - **GIVEN** a climatology file with 13 time steps
 - **WHEN** the file is opened
 - **THEN** the dataset is marked unavailable with a reason stating 12 steps were expected and 13 were found
+
+### Requirement: Cross-check daily and monthly periods
+At startup the system SHALL compare the last month derived from the daily file with the last
+month of the monthly file. If they differ, both files SHALL be flagged with a warning that
+names both months; startup SHALL continue and both files SHALL stay available.
+
+#### Scenario: Periods agree
+- **GIVEN** a daily file with 16436 steps and a monthly file with 540 steps
+- **WHEN** the application starts
+- **THEN** the daily last month is 2025-12, the monthly last month is 2025-12
+- **AND** no period warning is attached to either file
+
+#### Scenario: Periods disagree
+- **GIVEN** a daily file with 16436 steps (last month 2025-12) and a monthly file with
+  528 steps (last month 2024-12)
+- **WHEN** the application starts
+- **THEN** startup succeeds and both files are still available
+- **AND** both files carry the warning "Period mismatch: daily file ends in 2025-12, monthly
+  file ends in 2024-12"
+
+#### Scenario: Monthly file missing
+- **GIVEN** the daily file is present and the monthly file is missing
+- **WHEN** the application starts
+- **THEN** no period warning is attached to the daily file
+
+### Requirement: Configurable calendar start dates
+The start dates used to build the daily and monthly calendars SHALL come from the application
+settings (defaults 1981-01-01 for both) and SHALL be overridable through environment variables.
+
+#### Scenario: Default start dates
+- **GIVEN** no calendar environment variables are set
+- **WHEN** a daily file with 16436 steps is opened
+- **THEN** its time range is 1981-01-01 to 2025-12-31
+
+#### Scenario: Overridden daily start date
+- **GIVEN** `DAILY_START_DATE=1982-01-01`
+- **WHEN** a daily file with 365 steps is opened
+- **THEN** its time range is 1982-01-01 to 1982-12-31
+
+#### Scenario: Invalid start date
+- **GIVEN** `DAILY_START_DATE=1981-13-01`
+- **WHEN** the settings are loaded
+- **THEN** loading fails with a validation error that names `daily_start_date`
 
 ### Requirement: Dataset information page
 `GET /dataset` SHALL respond 200 with, for each of the three files: file name, availability,
@@ -123,3 +172,10 @@ reason and a pointer to `data/README.md`, and SHALL still respond 200.
 - **AND** the page shows a warning "PISCOp_d.nc is not available: file not found" that
   refers to `data/README.md`
 - **AND** the monthly and climatology details are still shown
+
+#### Scenario: Period mismatch warning
+- **GIVEN** the daily file ends in 2025-12 and the monthly file ends in 2024-12
+- **WHEN** a user opens `GET /dataset`
+- **THEN** the response status is 200
+- **AND** the sections of `PISCOp_d.nc` and `PISCOp_m.nc` both show the period mismatch
+  warning and still show their details
