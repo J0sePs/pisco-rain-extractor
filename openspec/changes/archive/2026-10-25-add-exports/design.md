@@ -94,8 +94,8 @@ Routes (`app/routes/point.py`):
 | GET | `/point/export.xlsx` | same | 200 XLSX media type, attachment | same as above |
 
 The chart route's query handling (daily-availability check, validate, extract, error mapping)
-moves to one private helper `_analysis_from_query(repo, lon, lat, start_year, end_year) ->
-PointAnalysis`, which raises `HTTPException(404)` or a module-level `_InputRejected` carrying the
+moves to one private helper `_analysis_from_query(repo: PiscoRepository, form: PointForm) ->
+PointAnalysis` (each route builds the `PointForm` from its raw query strings), which raises `HTTPException(404)` or a module-level `_InputRejected` carrying the
 422 message, turned into `PlainTextResponse` by each route. The chart route keeps its behavior.
 Route handlers pass `datetime.now(UTC)` as `generated_at`; tests call the service with a fixed
 time.
