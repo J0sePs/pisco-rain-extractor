@@ -22,3 +22,4 @@ numbers are never reused; this index is updated in the same commit as the ADR.
 | [0005](0005-read-netcdf-files-lazily-with-xarray.md) | Read NetCDF files lazily with xarray | Accepted | 2026-10-24 |
 | [0006](0006-use-the-nearest-grid-cell-for-point-extraction.md) | Use the nearest grid cell for point extraction | Accepted | 2026-10-24 |
 | [0007](0007-derive-calendar-dates-from-the-pisco-time-index.md) | Derive calendar dates from the PISCOp time index | Accepted | 2026-10-24 |
+| [0008](0008-catalog-the-pisco-climatology-file-without-using-it-for-analysis.md) | Catalog the PISCOp climatology file without using it for analysis | Accepted | 2026-10-24 |
