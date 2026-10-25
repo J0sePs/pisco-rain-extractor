@@ -91,6 +91,41 @@ button.primary { background: var(--accent); color: #fff; border: 1px solid var(-
 .result th,
 .result td { padding: 0.25rem 0.75rem; border-bottom: 1px solid var(--border); text-align: left; }
 
+/* CSS-only result tabs (design D8): the targeted section is shown, Summary by default. */
+.tabs { display: flex; flex-wrap: wrap; gap: 0.25rem; margin: 1rem 0 0; border-bottom: 1px solid var(--border); }
+.tabs a {
+  padding: 0.4rem 0.9rem;
+  color: var(--accent);
+  text-decoration: none;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+}
+.tab { display: none; padding: 1rem 0; scroll-margin-top: 4rem; }
+.tab:target { display: block; }
+.tab-panels:not(:has(.tab:target)) #summary { display: block; }
+.result:not(:has(.tab:target)) a[href="#summary"],
+.result:has(#summary:target) a[href="#summary"],
+.result:has(#daily:target) a[href="#daily"],
+.result:has(#annual:target) a[href="#annual"],
+.result:has(#climatology:target) a[href="#climatology"],
+.result:has(#location:target) a[href="#location"] {
+  color: var(--fg);
+  background: var(--bg);
+  border-color: var(--border);
+  margin-bottom: -1px;
+}
+@supports not selector(:has(*)) {
+  .tab { display: block; }
+}
+
+.chart { display: block; max-width: 100%; height: auto; margin: 0 0 1rem; }
+.pager { display: flex; gap: 1rem; align-items: center; }
+.note { font-size: 0.85rem; color: var(--muted); }
+.back-link { color: var(--accent); font-weight: 600; }
+.back-link:visited { color: var(--accent); }
+.result tr.incomplete td { color: var(--muted); background: var(--warn-bg); }
+
 .site-footer {
   padding: 1rem;
   font-size: 0.85rem;

@@ -3,6 +3,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pytest
 from xarray.backends import netCDF4_
 
@@ -16,6 +17,8 @@ from app.services.point_service import (
     PointInputError,
     convert_utm,
     extract_point,
+    result_query,
+    validate_point,
     year_defaults,
 )
 from tests.conftest import DAILY_STEPS, write_reference_dir
@@ -36,6 +39,10 @@ def repo(reference_dir: Path) -> Iterator[PiscoRepository]:
 
 def _form(**values: str) -> PointForm:
     return PointForm(**{"start_year": "1981", "end_year": "1981", **REF, **values})
+
+
+def _extract(repo: PiscoRepository, **values: str) -> point_service.PointResult:
+    return extract_point(repo, validate_point(repo, _form(**values)))
 
 
 def test_year_defaults(repo: PiscoRepository) -> None:
@@ -69,7 +76,7 @@ def test_year_defaults_last_year_incomplete(tmp_path: Path) -> None:
 )
 def test_validation_messages(repo: PiscoRepository, fields: dict, message: str) -> None:
     with pytest.raises(PointInputError) as error:
-        extract_point(repo, _form(**fields))
+        validate_point(repo, _form(**fields))
     assert str(error.value) == message
 
 
@@ -91,51 +98,74 @@ def test_errors_happen_before_any_read(
 
     monkeypatch.setattr(netCDF4_.NetCDF4ArrayWrapper, "_getitem", spy)
     with pytest.raises(PointInputError):
-        extract_point(repo, _form(**fields))
+        validate_point(repo, _form(**fields))
+    assert "precipitation" not in reads
+
+
+def test_valid_request_reads_nothing(
+    repo: PiscoRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    if not hasattr(netCDF4_.NetCDF4ArrayWrapper, "_getitem"):
+        pytest.fail("xarray internals changed; update the read spy")
+    reads: list[str] = []
+    original = netCDF4_.NetCDF4ArrayWrapper._getitem
+
+    def spy(self: netCDF4_.NetCDF4ArrayWrapper, key: object) -> np.ndarray:
+        reads.append(self.variable_name)
+        return original(self, key)
+
+    monkeypatch.setattr(netCDF4_.NetCDF4ArrayWrapper, "_getitem", spy)
+    query = validate_point(repo, _form(end_year="1985"))
+    assert query == point_service.PointQuery(-76.1390222, -12.2935861, 1981, 1985)
     assert "precipitation" not in reads
 
 
 def test_summary_with_missing_days(repo: PiscoRepository) -> None:
-    result = extract_point(repo, _form())
+    result = _extract(repo)
     assert (result.cell.lon, result.cell.lat) == (-76.15, -12.25)
     assert result.distance_km == 4.991
     assert (str(result.period_start), str(result.period_end)) == ("1981-01-01", "1981-12-31")
     assert (result.total_days, result.missing_days) == (365, 2)
-    assert [d for d, _ in result.head] == [f"1981-01-0{i}" for i in range(1, 6)]
-    assert [d for d, _ in result.tail] == [f"1981-12-{i}" for i in range(27, 32)]
-    assert result.head[2] == ("1981-01-03", None)  # missing day
-    assert result.head[1] == ("1981-01-02", 1.5)
-    assert list(result.series.columns) == ["date", "precipitation_mm"]
+    assert result.series[pd.Timestamp("1981-01-02")] == 1.5
     assert len(result.series) == 365
+    assert result.series.isna().sum() == 2
+    assert pd.isna(result.series[pd.Timestamp("1981-01-03")])
+    assert result.resolution_deg == 0.1
+    assert (result.start_year, result.end_year) == (1981, 1981)
 
 
 def test_single_leap_year(repo: PiscoRepository) -> None:
-    result = extract_point(repo, _form(start_year="2000", end_year="2000"))
+    result = _extract(repo, start_year="2000", end_year="2000")
     assert result.total_days == 366
 
 
 def test_tie_point_goes_north(repo: PiscoRepository) -> None:
-    result = extract_point(repo, _form(lon="-76.15", lat="-12.30"))
+    result = _extract(repo, lon="-76.15", lat="-12.30")
     assert result.cell.lat == -12.25
     assert result.distance_km == 5.560
 
 
 def test_tie_point_goes_east(repo: PiscoRepository) -> None:
-    result = extract_point(repo, _form(lon="-76.10", lat="-12.25"))
+    result = _extract(repo, lon="-76.10", lat="-12.25")
     assert (result.cell.lon, result.cell.lat) == (-76.05, -12.25)
     assert result.distance_km == 5.433
 
 
 def test_exact_center_has_zero_distance(repo: PiscoRepository) -> None:
-    result = extract_point(repo, _form(lon="-76.25", lat="-12.15"))
+    result = _extract(repo, lon="-76.25", lat="-12.15")
     assert (result.cell.lon, result.cell.lat) == (-76.25, -12.15)
     assert result.distance_km == 0.0
 
 
 def test_all_missing_cell_raises_no_data(repo: PiscoRepository) -> None:
     with pytest.raises(NoDataError) as error:
-        extract_point(repo, _form(lon="-76.35", lat="-12.45"))
+        _extract(repo, lon="-76.35", lat="-12.45")
     assert str(error.value) == NO_DATA_MESSAGE
+
+
+def test_result_query_strips_values() -> None:
+    form = PointForm(lon=" -76.1390222", lat="-12.2935861", start_year="1981", end_year="1985 ")
+    assert result_query(form) == "lon=-76.1390222&lat=-12.2935861&start_year=1981&end_year=1985"
 
 
 def test_convert_utm_reference() -> None:

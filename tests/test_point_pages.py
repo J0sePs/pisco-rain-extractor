@@ -14,6 +14,7 @@ REF_FORM = {
     "end_year": "1981",
     "action": "extract",
 }
+RESULT_QUERY = "lon=-76.1390222&lat=-12.2935861&start_year=1981&end_year=1981"
 UTM_FORM = {
     "easting": "376135.41",
     "northing": "8640719.67",
@@ -72,16 +73,27 @@ def test_convert_errors(ref_client: TestClient, fields: dict, message: str) -> N
     assert _input_value(response.text, "lon") == "-70"  # unchanged
 
 
+def test_extract_redirects_to_result(ref_client: TestClient) -> None:
+    response = ref_client.post(
+        "/point", data={**REF_FORM, "end_year": "1985"}, follow_redirects=False
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == (
+        "/point/result?lon=-76.1390222&lat=-12.2935861&start_year=1981&end_year=1985"
+    )
+
+
 def test_reference_extraction(ref_client: TestClient) -> None:
-    response = ref_client.post("/point", data=REF_FORM)
+    response = ref_client.post("/point", data=REF_FORM)  # follows the redirect
     assert response.status_code == 200
+    assert str(response.url).endswith("/point/result?" + RESULT_QUERY)
     result = response.text.split('id="result"', 1)[1]
     assert "longitude -76.15, latitude -12.25" in result
     assert "4.991 km" in result
     assert "1981-01-01 to 1981-12-31" in result
     assert "<dd>365</dd>" in result and "<dd>2</dd>" in result
     assert "<td>1981-01-03</td><td>missing</td>" in result
-    assert "<td>1981-12-31</td>" in result
+    assert "First days" not in result and "Last days" not in result
 
 
 def test_tie_point(ref_client: TestClient) -> None:
@@ -100,7 +112,7 @@ def test_tie_point(ref_client: TestClient) -> None:
     ],
 )
 def test_extraction_errors(ref_client: TestClient, fields: dict, message: str) -> None:
-    response = ref_client.post("/point", data={**REF_FORM, **fields})
+    response = ref_client.post("/point", data={**REF_FORM, **fields}, follow_redirects=False)
     assert response.status_code == 422
     assert 'role="alert"' in response.text
     assert message in response.text

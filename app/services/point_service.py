@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import date
+from urllib.parse import urlencode
 
 import pandas as pd
 
@@ -9,9 +10,6 @@ from app.repositories.pisco_repository import CellRef, DatasetKind, PiscoReposit
 from app.services.coordinates import CoordinateError, haversine_km, utm_to_wgs84
 
 NO_DATA_MESSAGE = "No data available for this location"
-PREVIEW_ROWS = 5
-
-Row = tuple[str, float | None]
 
 
 @dataclass(frozen=True)
@@ -40,6 +38,16 @@ class NoDataError(ValueError):
 
 
 @dataclass(frozen=True)
+class PointQuery:
+    """A validated point request."""
+
+    lon: float
+    lat: float
+    start_year: int
+    end_year: int
+
+
+@dataclass(frozen=True)
 class PointResult:
     """A successful extraction and its summary."""
 
@@ -47,13 +55,14 @@ class PointResult:
     lat: float
     cell: CellRef
     distance_km: float
+    resolution_deg: float
+    start_year: int
+    end_year: int
     period_start: date
     period_end: date
     total_days: int
     missing_days: int
-    head: list[Row]
-    tail: list[Row]
-    series: pd.DataFrame  # columns: date (ISO 8601), precipitation_mm
+    series: pd.Series  # DatetimeIndex "date", float mm, NaN = missing, as read
 
 
 def year_defaults(repo: PiscoRepository) -> tuple[int, int] | None:
@@ -77,11 +86,8 @@ def convert_utm(form: PointForm) -> tuple[float, float]:
         raise PointInputError(str(exc)) from exc
 
 
-def extract_point(repo: PiscoRepository, form: PointForm) -> PointResult:
-    """Validate the form, read the nearest cell for the requested years and summarize it.
-
-    Validation follows design D2 and finishes before any precipitation value is read.
-    """
+def validate_point(repo: PiscoRepository, form: PointForm) -> PointQuery:
+    """Validate the form in the order of design D2; no precipitation value is read."""
     lon = _number(form.lon, "Longitude")
     lat = _number(form.lat, "Latitude")
     start_year = _integer(form.start_year, "Start year")
@@ -102,27 +108,43 @@ def extract_point(repo: PiscoRepository, form: PointForm) -> PointResult:
     first, last = years
     if start_year < first or end_year > last:
         raise PointInputError(f"Years must be between {first} and {last}")
+    return PointQuery(lon=lon, lat=lat, start_year=start_year, end_year=end_year)
 
-    cell = repo.nearest_cell(lon, lat)
-    series = repo.read_cell_series(cell, date(start_year, 1, 1), date(end_year, 12, 31))
+
+def extract_point(repo: PiscoRepository, query: PointQuery) -> PointResult:
+    """Read the cell nearest to a validated point for the requested years and summarize it."""
+    cell = repo.nearest_cell(query.lon, query.lat)
+    series = repo.read_cell_series(cell, date(query.start_year, 1, 1), date(query.end_year, 12, 31))
     if series.empty or series.isna().all():
         raise NoDataError()
 
-    dates = series.index.strftime("%Y-%m-%d")
-    frame = pd.DataFrame({"date": dates, "precipitation_mm": series.to_numpy()})  # full precision
-    rows = [(day, _value(v)) for day, v in zip(dates, series.to_numpy(), strict=True)]
+    resolution = repo.metadata(DatasetKind.DAILY).resolution_deg
+    assert resolution is not None  # an available daily file always has a resolution
     return PointResult(
-        lon=lon,
-        lat=lat,
+        lon=query.lon,
+        lat=query.lat,
         cell=cell,
-        distance_km=round(haversine_km(lon, lat, cell.lon, cell.lat), 3),
+        distance_km=round(haversine_km(query.lon, query.lat, cell.lon, cell.lat), 3),
+        resolution_deg=resolution,
+        start_year=query.start_year,
+        end_year=query.end_year,
         period_start=series.index[0].date(),
         period_end=series.index[-1].date(),
         total_days=len(series),
         missing_days=int(series.isna().sum()),
-        head=rows[:PREVIEW_ROWS],
-        tail=rows[-PREVIEW_ROWS:],
-        series=frame,
+        series=series,
+    )
+
+
+def result_query(form: PointForm) -> str:
+    """Query string of the result URL, built from the stripped form values (ADR-0013)."""
+    return urlencode(
+        {
+            "lon": form.lon.strip(),
+            "lat": form.lat.strip(),
+            "start_year": form.start_year.strip(),
+            "end_year": form.end_year.strip(),
+        }
     )
 
 
@@ -145,7 +167,3 @@ def _integer(text: str, label: str, message: str | None = None) -> int:
         return int(text.strip())
     except ValueError:
         raise PointInputError(message or f"{label} must be an integer") from None
-
-
-def _value(value: float) -> float | None:
-    return None if pd.isna(value) else round(float(value), 2)

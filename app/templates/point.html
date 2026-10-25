@@ -41,29 +41,5 @@
 
 {% if no_data %}<div class="warning" role="alert">{{ no_data }}</div>{% endif %}
 
-{% if result %}
-<section class="result" id="result">
-  <h2>Result</h2>
-  <dl>
-    <dt>Requested point</dt><dd>longitude {{ result.lon }}, latitude {{ result.lat }}</dd>
-    <dt>Selected cell</dt><dd>longitude {{ result.cell.lon }}, latitude {{ result.cell.lat }}</dd>
-    <dt>Distance</dt><dd>{{ "%.3f"|format(result.distance_km) }} km</dd>
-    <dt>Period</dt><dd>{{ result.period_start }} to {{ result.period_end }}</dd>
-    <dt>Total days</dt><dd>{{ result.total_days }}</dd>
-    <dt>Missing days</dt><dd>{{ result.missing_days }}</dd>
-  </dl>
-  {% for title, rows in (("First days", result.head), ("Last days", result.tail)) %}
-  <table>
-    <caption>{{ title }}</caption>
-    <thead><tr><th scope="col">date</th><th scope="col">precipitation_mm</th></tr></thead>
-    <tbody>
-      {% for day, value in rows %}
-      <tr><td>{{ day }}</td><td>{% if value is none %}missing{% else %}{{ "%.2f"|format(value) }}{% endif %}</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% endfor %}
-</section>
-{% endif %}
 {% endif %}
 {% endblock %}
