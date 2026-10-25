@@ -23,6 +23,7 @@ Stack, architecture and constraints: `openspec/config.yaml` (`context` block).
 | `app/repositories/` | NetCDF access (the only code that reads `data/`) |
 | `app/templates/`, `app/static/` | Jinja2 templates and plain CSS |
 | `tests/` | pytest suite with synthetic NetCDF fixtures |
+| `scripts/` | Verification utilities that read the real `data/` files through the repository; not part of the test suite |
 | `data/` | Third-party PISCOp files (gitignored) |
 
 ## Commands
