@@ -55,6 +55,8 @@ def write_pisco_file(
     values: Callable[[tuple[int, int, int]], np.ndarray] | np.ndarray | None = None,
     coord_dtype: type = np.float32,
     chunksizes: tuple[int, int, int] | None = None,
+    fill_value: float | None = None,
+    packing: dict | None = None,
 ) -> Path:
     """Write a small NetCDF file with the PISCOp v3.0 layout and return its path.
 
@@ -63,6 +65,8 @@ def write_pisco_file(
     `values` fills the precipitation grid (time, lat, lon) in descending-latitude order; it is
     an array or a callable receiving the shape. Default: zeros. `chunksizes` stores the
     precipitation variable chunked (time, lat, lon), like the real files; default: contiguous.
+    `fill_value` stores missing values as that `_FillValue` (the real file uses -1.175494e+38)
+    and `packing` adds encoding keys such as `dtype` and `scale_factor`.
     """
     lat = make_coords(n_lat, lat_start, STEP, ascending=False, dtype=coord_dtype)
     lon = make_coords(n_lon, lon_start, STEP, dtype=coord_dtype)
@@ -90,9 +94,15 @@ def write_pisco_file(
             attrs["units"] = units
         data_vars[variable] = ((time_name, lat_name, lon_name), grid, attrs)
     ds = xr.Dataset(data_vars=data_vars, coords=coords)
-    encoding = {}
-    if chunksizes is not None and include_precipitation:
-        encoding[variable] = {"chunksizes": chunksizes}
+    encoding: dict = {}
+    if include_precipitation:
+        var_encoding: dict = dict(packing or {})
+        if chunksizes is not None:
+            var_encoding["chunksizes"] = chunksizes
+        if fill_value is not None:
+            var_encoding["_FillValue"] = np.float32(fill_value)
+        if var_encoding:
+            encoding[variable] = var_encoding
     ds.to_netcdf(path, engine="netcdf4", encoding=encoding)
     ds.close()
     return path

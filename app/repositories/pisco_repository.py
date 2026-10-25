@@ -1,7 +1,8 @@
 """Access to the PISCOp v3.0 NetCDF files.
 
 This is the only module that opens NetCDF files (ADR-0004). Files are opened once and lazily
-(ADR-0005): opening reads only 1-D coordinates; precipitation is read one cell at a time.
+(ADR-0005): opening reads only 1-D coordinates; precipitation is read one cell at a time, or one
+chunk-aligned tile at a time for basin boxes (ADR-0020).
 """
 
 from __future__ import annotations
@@ -434,22 +435,29 @@ class PiscoRepository:
         return self.grid_box(cell.lon, cell.lat, cell.lon, cell.lat)
 
     def time_block_length(self) -> int:
-        """Days per basin read block: the file's time chunk length (ADR-0017)."""
+        """Days per basin read block: the file's time chunk length (ADR-0020)."""
+        chunks = self._chunks()
+        return UNCHUNKED_BLOCK_DAYS if chunks is None else chunks[0]
+
+    def _chunks(self) -> tuple[int, int, int] | None:
+        """Chunk lengths of the daily variable as (time, lat, lon), or None when contiguous."""
         ds, meta = self._daily()
         variable = ds[meta.variable]
         chunks = variable.encoding.get("chunksizes")
         if not chunks:
-            return UNCHUNKED_BLOCK_DAYS
-        return int(chunks[variable.dims.index(meta.time_name)])
+            return None
+        dims = list(variable.dims)
+        time, lat, lon = (dims.index(n) for n in (meta.time_name, meta.lat_name, meta.lon_name))
+        return int(chunks[time]), int(chunks[lat]), int(chunks[lon])
 
     def iter_box_blocks(
         self, box: GridBox, start: date, end: date
     ) -> Iterator[tuple[pd.DatetimeIndex, np.ndarray]]:
         """Daily precipitation of `box` from `start` to `end`, one time block at a time.
 
-        Each block is one read of the box (float32, dims time, lat, lon; NaN = missing). Block
-        edges are aligned with the file's time chunks, so only one block is in memory
-        (ADR-0005, ADR-0017).
+        Blocks (float32, dims time, lat, lon; NaN = missing) are aligned with the file's time
+        chunks and read tile by tile, one spatial chunk per read, so one block is in memory and
+        each read decompresses one chunk (ADR-0005, ADR-0020).
         """
         ds, meta = self._daily()
         index = self.time_index(DatasetKind.DAILY)
@@ -457,29 +465,38 @@ class PiscoRepository:
         positions = np.flatnonzero((index >= pd.Timestamp(start)) & (index <= pd.Timestamp(end)))
         if positions.size == 0 or box.size == 0:
             return
-        lat = ds[meta.lat_name].values
-        lon = ds[meta.lon_name].values
-        selected = ds[meta.variable].sel(
-            {
-                meta.lat_name: lat_slice(lat, box.south, box.north),
-                meta.lon_name: lon_slice(lon, box.west, box.east),
-            }
-        )
+        lat_labels = lat_slice(ds[meta.lat_name].values, box.south, box.north)
+        lon_labels = lon_slice(ds[meta.lon_name].values, box.west, box.east)
+        rows = ds.get_index(meta.lat_name).slice_indexer(lat_labels.start, lat_labels.stop)
+        cols = ds.get_index(meta.lon_name).slice_indexer(lon_labels.start, lon_labels.stop)
         length = self.time_block_length()
         first, last = int(positions[0]), int(positions[-1]) + 1
         block_start = first
         while block_start < last:
             block_end = min((block_start // length + 1) * length, last)
-            values = (
-                selected.isel({meta.time_name: slice(block_start, block_end)})
-                .transpose(meta.time_name, meta.lat_name, meta.lon_name)
-                .values
-            )
-            yield (
-                pd.DatetimeIndex(index[block_start:block_end]),
-                values.astype(np.float32, copy=False),
-            )
+            values = self._read_block(slice(block_start, block_end), rows, cols)
+            yield pd.DatetimeIndex(index[block_start:block_end]), values
             block_start = block_end
+
+    def _read_block(self, times: slice, rows: slice, cols: slice) -> np.ndarray:
+        """One time block of the box, assembled from chunk-aligned tiles (ADR-0020)."""
+        ds, meta = self._daily()
+        variable = ds[meta.variable]
+        chunks = self._chunks()
+        chunk_lat, chunk_lon = (None, None) if chunks is None else chunks[1:]
+        shape = (times.stop - times.start, rows.stop - rows.start, cols.stop - cols.start)
+        block = np.empty(shape, dtype=np.float32)
+        for tile_rows in _tiles(rows, chunk_lat):
+            for tile_cols in _tiles(cols, chunk_lon):
+                tile = variable.isel(
+                    {meta.time_name: times, meta.lat_name: tile_rows, meta.lon_name: tile_cols}
+                )
+                block[
+                    :,
+                    tile_rows.start - rows.start : tile_rows.stop - rows.start,
+                    tile_cols.start - cols.start : tile_cols.stop - cols.start,
+                ] = tile.transpose(meta.time_name, meta.lat_name, meta.lon_name).values
+        return block
 
     def _daily(self) -> tuple[xr.Dataset, DatasetMetadata]:
         return self._open_series(DatasetKind.DAILY)
@@ -498,6 +515,18 @@ class PiscoRepository:
             if entry.dataset is not None:
                 entry.dataset.close()
                 entry.dataset = None
+
+
+def _tiles(span: slice, chunk: int | None) -> Iterator[slice]:
+    """Split `span` at chunk boundaries (multiples of `chunk`); one tile when unchunked."""
+    if chunk is None:
+        yield span
+        return
+    start = span.start
+    while start < span.stop:
+        stop = min((start // chunk + 1) * chunk, span.stop)
+        yield slice(start, stop)
+        start = stop
 
 
 def _unavailable(kind: DatasetKind, reason: str) -> _Entry:
