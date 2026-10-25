@@ -25,6 +25,7 @@ Stack, architecture and constraints: `openspec/config.yaml` (`context` block).
 | `tests/` | pytest suite with synthetic NetCDF fixtures |
 | `scripts/` | Verification utilities that read the real `data/` files through the repository; not part of the test suite |
 | `data/` | Third-party PISCOp files (gitignored) |
+| `BACKLOG.md` | Pending improvements and ideas, not yet planned (each becomes an OpenSpec change) |
 
 ## Commands
 ```bash
