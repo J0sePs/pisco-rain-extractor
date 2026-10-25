@@ -1,6 +1,6 @@
 # ADR-0017: Read basin bounding boxes in time blocks with a 2500-cell limit
 
-- **Status:** Accepted
+- **Status:** Superseded by [ADR-0019](0019-read-basin-bounding-boxes-in-chunk-aligned-tiles-with-no-chunk-cache-and-a-2500-cell-limit.md)
 - **Date:** 2026-10-25
 - **Deciders:** Project owner
 - **Supersedes:** -

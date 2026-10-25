@@ -50,7 +50,7 @@ daily rainfall, with the same analysis and exports as a point, closes that gap.
   does not supersede, ADR-0013).
 - Areal mean method: centers-inside selection, centroid fallback, arithmetic mean of valid
   cells, exclusion of all-missing cells (ADR-0016).
-- Basin reads: bounding box only, in time blocks, limit of 2500 bounding-box cells (ADR-0017,
+- Basin reads: bounding box only, in chunk-aligned tiles, limit of 2500 bounding-box cells (ADR-0019,
   follows ADR-0005 and ADR-0010).
 
 ## Impact

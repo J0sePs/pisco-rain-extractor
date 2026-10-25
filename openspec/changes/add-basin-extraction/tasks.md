@@ -4,7 +4,7 @@ No new dependencies: geopandas (pyogrio engine), shapely, pyproj and python-mult
 already declared in `pyproject.toml`.
 
 Accepted ADRs for this change: ADR-0018 (result store, supersedes ADR-0015), ADR-0016 (areal
-mean) and ADR-0017 (blocked bounding-box reads). Before starting, commit the plan and the ADRs (git-discipline).
+mean) and ADR-0019 (chunk-aligned tile reads, supersedes ADR-0017). Before starting, commit the plan and the ADRs (git-discipline).
 
 ## 1. Setup: settings, ignore rules and backlog
 
@@ -55,7 +55,9 @@ mean) and ADR-0017 (blocked bounding-box reads). Before starting, commit the pla
 
 ## 8. Real-data memory check
 
-- [ ] 8.1 Add `scripts/check_basin_memory.py`: opens the real files through `PiscoRepository`, runs `extract_basin` on a 50 × 50-cell rectangle for 1981–2025 and prints elapsed time and peak working set (`ctypes` `GetProcessMemoryInfo` on Windows, `resource.getrusage` elsewhere) — verify: `uv run python scripts/check_basin_memory.py` prints a peak below 300 MB; record the values in design D5 through `/opsx:update` if they differ from the estimate
+- [ ] 8.1 In `app/repositories/pisco_repository.py` open a second netCDF4 handle of the daily file at startup for box reads (precipitation variable with `set_var_chunk_cache(size=0)` and `set_auto_maskandscale(False)`, closed in `close()`, falling back to xarray when `scale_factor`/`add_offset` are declared), turn `_FillValue`/`missing_value` into NaN, and make `iter_box_blocks` read each block tile by tile, one spatial chunk at a time (ADR-0019) — verify: covered by 8.2
+- [ ] 8.2 Extend `tests/test_basin_repository.py`: on the chunked fixture, tiled blocks equal `read_cell_series` per cell and each read covers at most one spatial chunk (≤ 2 × 2 cells for chunks of 2 × 2); a fixture written with an explicit `_FillValue` of -1.175494e+38 gives NaN on those days; a fixture with `scale_factor` falls back to xarray reads with the same values; the box handle is closed by `close()`; existing basin tests pass unchanged — verify: `uv run pytest tests/test_basin_repository.py tests/test_basin_service.py -q` passes
+- [ ] 8.3 Add `scripts/check_basin_memory.py`: opens the real files through `PiscoRepository`, runs `extract_basin` on a 50 × 50-cell rectangle for 1981–2025 and prints elapsed time and peak working set (`ctypes` `K32GetProcessMemoryInfo` on Windows, `resource.getrusage` elsewhere) — verify: `uv run python scripts/check_basin_memory.py` prints a peak below 300 MB (first implementation measured 302 MB, see ADR-0019); record the final values in design D5
 
 ## 9. Integration verification
 
