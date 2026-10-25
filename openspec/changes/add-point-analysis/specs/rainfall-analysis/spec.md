@@ -21,7 +21,7 @@ The page SHALL NOT include JavaScript.
 #### Scenario: No scripts on the result page
 - **WHEN** a user opens a valid result URL
 - **THEN** the HTML contains no `<script>` element and no `http://` or `https://` URL in `href`
-  or `src` attributes
+  or `src` attributes of `link`, `script` or `img` elements
 
 ### Requirement: Year completeness
 A calendar year SHALL be complete when its valid (non-missing) days are at least 95% of the
