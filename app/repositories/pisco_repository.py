@@ -316,12 +316,15 @@ class PiscoRepository:
             lat_max=_rounded(meta.lat_max + half),
         )
 
-    def nearest_cell(self, lon: float, lat: float) -> CellRef:
-        """Daily grid cell nearest to the point (ADR-0006, ties per ADR-0011).
+    def nearest_cell(
+        self, lon: float, lat: float, kind: DatasetKind = DatasetKind.DAILY
+    ) -> CellRef:
+        """Cell of the `kind` grid nearest to the point (ADR-0006, ties per ADR-0011).
 
-        Only the 1-D coordinates are used; no precipitation value is read.
+        Each file's cell is located on its own coordinates (ADR-0008). Only the 1-D
+        coordinates are used; no precipitation value is read.
         """
-        ds, meta = self._daily()
+        ds, meta = self._open_series(kind)
         lats = ds[meta.lat_name].values
         lons = ds[meta.lon_name].values
         i = _nearest_index(lats, lat)
@@ -356,10 +359,31 @@ class PiscoRepository:
             values.astype(float), index=index[first : last + 1], name="precipitation_mm"
         )
 
+    def read_monthly_cell_series(self, cell: CellRef) -> pd.Series:
+        """Monthly precipitation (mm, NaN = missing) of one cell for the whole monthly file.
+
+        `cell` must come from `nearest_cell(..., DatasetKind.MONTHLY)`. One `isel` reads only
+        that cell (ADR-0005); the index is the monthly calendar (ADR-0007).
+        """
+        ds, meta = self._open_series(DatasetKind.MONTHLY)
+        index = self.time_index(DatasetKind.MONTHLY)
+        assert index is not None  # available monthly file always has a calendar
+        values = (
+            ds[meta.variable]
+            .isel({meta.lat_name: cell.lat_index, meta.lon_name: cell.lon_index})
+            .values
+        )
+        return pd.Series(values.astype(float), index=index, name="precipitation_mm")
+
     def _daily(self) -> tuple[xr.Dataset, DatasetMetadata]:
-        entry = self._entries[DatasetKind.DAILY]
+        return self._open_series(DatasetKind.DAILY)
+
+    def _open_series(self, kind: DatasetKind) -> tuple[xr.Dataset, DatasetMetadata]:
+        if kind is DatasetKind.CLIMATOLOGY:
+            raise ValueError("climatology is catalog-only")
+        entry = self._entries[kind]
         if entry.dataset is None:
-            raise ValueError("daily data is not available")
+            raise ValueError(f"{kind} data is not available")
         return entry.dataset, entry.metadata
 
     def close(self) -> None:

@@ -164,3 +164,43 @@ def test_only_the_selected_cell_is_read(
     ds = ref_repo.dataset(DatasetKind.DAILY)
     assert ds is not None
     assert not ds["precipitation"].variable._in_memory
+
+
+# --- monthly cell (calendar alignment check, design D10) ---------------------------------
+
+
+def test_nearest_monthly_cell(data_dir: Path) -> None:
+    repo = _open(data_dir)
+    try:
+        cell = repo.nearest_cell(-81.35, 1.95, DatasetKind.MONTHLY)
+    finally:
+        repo.close()
+    assert (cell.lon, cell.lat) == (-81.35, 1.95)
+    assert (cell.lat_index, cell.lon_index) == (0, 0)
+
+
+def test_climatology_cell_is_refused(data_dir: Path) -> None:
+    repo = _open(data_dir)
+    try:
+        with pytest.raises(ValueError, match="catalog-only"):
+            repo.nearest_cell(-81.35, 1.95, DatasetKind.CLIMATOLOGY)
+    finally:
+        repo.close()
+
+
+def test_monthly_series_reads_one_cell(
+    data_dir: Path, read_spy: list[tuple[str, tuple[int, ...]]]
+) -> None:
+    repo = _open(data_dir)
+    try:
+        cell = repo.nearest_cell(-81.35, 1.95, DatasetKind.MONTHLY)
+        series = repo.read_monthly_cell_series(cell)
+    finally:
+        repo.close()
+    assert len(series) == 540
+    assert series.index[0].strftime("%Y-%m-%d") == "1981-01-01"
+    assert series.index[-1].strftime("%Y-%m-%d") == "2025-12-01"
+    precipitation_reads = [shape for name, shape in read_spy if name == "precipitation"]
+    if not precipitation_reads:
+        pytest.fail(SPY_BROKEN)
+    assert precipitation_reads == [(540,)]
