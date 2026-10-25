@@ -73,3 +73,4 @@ openspec validate --all
 
 ## Lessons learned
 <!-- One line per mistake the agent repeats. -->
+- ruff excludes `openspec/`, `adr/` and `.claude/` (`extend-exclude` in `pyproject.toml`) because it also formats Python code blocks inside `.md` files, and the illustrative snippets in planning docs are not runnable code; do not remove the exclusion.
