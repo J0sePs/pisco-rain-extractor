@@ -175,8 +175,9 @@ def _time_index(
 
 
 def _rounded(value: float) -> float:
-    # Convert first (rounding a float32 keeps float32 noise: 1.55 -> 1.5499999523). Four
-    # decimals: float32 error near 81 degrees is ~1e-5, far below the 0.1 degree grid.
+    # Bounds are rounded to 4 decimals to remove float32 noise (1.55 is stored as
+    # 1.5499999523). Convert to a Python float first: rounding a float32 keeps the noise.
+    # float32 error near 81 degrees is ~1e-5, far below the 0.1 degree grid spacing.
     return round(float(value), 4)
 
 

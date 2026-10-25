@@ -74,3 +74,4 @@ openspec validate --all
 ## Lessons learned
 <!-- One line per mistake the agent repeats. -->
 - ruff excludes `openspec/`, `adr/` and `.claude/` (`extend-exclude` in `pyproject.toml`) because it also formats Python code blocks inside `.md` files, and the illustrative snippets in planning docs are not runnable code; do not remove the exclusion.
+- `StarletteDeprecationWarning` inherits from `UserWarning`, not `DeprecationWarning`: `-W error::DeprecationWarning` does not catch it. Filter it by its own class, `-W error::starlette.exceptions.StarletteDeprecationWarning`.
