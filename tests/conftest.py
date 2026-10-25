@@ -47,14 +47,24 @@ def write_pisco_file(
     time_name: str = "Z1",
     ascending_lat: bool = False,
     include_precipitation: bool = True,
+    time_units: str = "unknown",
+    time_start_value: int = 1,
 ) -> Path:
-    """Write a small NetCDF file with the PISCOp v3.0 layout and return its path."""
+    """Write a small NetCDF file with the PISCOp v3.0 layout and return its path.
+
+    By default the time axis is an integer index 1..N with `units: unknown`, as in the real
+    files. Pass CF units (e.g. "days since 1981-01-01") to build a file with real dates.
+    """
     lat = make_coords(n_lat, LAT_START, STEP, ascending=False)
     if ascending_lat:
         lat = lat[::-1].copy()
     lon = make_coords(n_lon, lon_start, STEP)
     coords = {
-        time_name: (time_name, np.arange(1, n_time + 1, dtype=np.int32), {"units": "unknown"}),
+        time_name: (
+            time_name,
+            np.arange(time_start_value, time_start_value + n_time, dtype=np.int32),
+            {"units": time_units},
+        ),
         lat_name: (lat_name, lat, {"units": "degrees_north", "long_name": "latitude"}),
         lon_name: (lon_name, lon, {"units": "degrees_east", "long_name": "longitude"}),
     }

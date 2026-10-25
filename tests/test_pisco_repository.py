@@ -1,4 +1,5 @@
 from collections.abc import Callable, Iterator
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -133,3 +134,41 @@ def test_climatology_is_catalog_only(open_repo: Callable, data_dir: Path) -> Non
     with pytest.raises(ValueError, match="climatology is catalog-only"):
         repo.dataset(DatasetKind.CLIMATOLOGY)
     assert repo.metadata(DatasetKind.CLIMATOLOGY).available
+
+
+def _open_daily_only(tmp_path: Path, start: date, **file_kwargs: object) -> PiscoRepository:
+    directory = tmp_path / "daily-only"
+    directory.mkdir()
+    write_pisco_file(directory / "PISCOp_d.nc", 365, **file_kwargs)  # type: ignore[arg-type]
+    return PiscoRepository.open(Settings(data_dir=directory, daily_start_date=start))
+
+
+def test_daily_start_date_from_settings(tmp_path: Path) -> None:
+    repo = _open_daily_only(tmp_path, date(1982, 1, 1))
+    try:
+        daily = repo.metadata(DatasetKind.DAILY)
+        assert (daily.time_start, daily.time_end) == ("1982-01-01", "1982-12-31")
+        assert daily.warnings == []
+    finally:
+        repo.close()
+
+
+def test_cf_dates_in_file_take_precedence(tmp_path: Path) -> None:
+    repo = _open_daily_only(
+        tmp_path, date(1990, 1, 1), time_units="days since 1981-01-01", time_start_value=0
+    )
+    try:
+        daily = repo.metadata(DatasetKind.DAILY)
+        assert (daily.time_start, daily.time_end) == ("1981-01-01", "1981-12-31")
+    finally:
+        repo.close()
+
+
+def test_cf_offset_counts_from_reference_date(tmp_path: Path) -> None:
+    repo = _open_daily_only(
+        tmp_path, date(1990, 1, 1), time_units="days since 1981-01-01", time_start_value=1
+    )
+    try:
+        assert repo.metadata(DatasetKind.DAILY).time_start == "1981-01-02"
+    finally:
+        repo.close()
